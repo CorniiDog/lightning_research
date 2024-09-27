@@ -9,10 +9,15 @@ from typing import (
 )  # For explicit types to rigid-ify the coding process
 
 lightning_data_folder = "lightning_data"
+
+# i.e. LYLOUT_240911_155000_0600.dat
 data_extension = ".dat"
 
+# i.e. Data: time (UT sec of day), lat, lon, alt(m), reduced chi^2, P(dBW), mask
 data_header_startswith = "Data:"
 data_header_startswith_len = len(data_header_startswith)
+
+# i.e. *** data ***
 data_body_start = "*** data ***"
 
 lightning_data_output_folder = "lightning_data_output"
