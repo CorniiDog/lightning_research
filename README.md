@@ -54,3 +54,9 @@ Next, to unzip all of the `.dat.gz` files to simply `.dat`:
 ```
 gunzip *.gz
 ```
+
+To run:
+
+```
+python main.py
+```
