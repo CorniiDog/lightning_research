@@ -1,11 +1,14 @@
 ## Lightning Research Project
 
-Connor White - Determined for space lightning
+Connor White - Modular filtering algorithm, applied for space lightning
+
+```
+git clone https://github.com/CorniiDog/lightning_research.git
+```
 
 Notables:
 
 UT - seconds after midnight, in world time
-
 
 About the naming scheme (i.e. lightning_data/LYLOUT_240911_235000_0600.dat):
 >
