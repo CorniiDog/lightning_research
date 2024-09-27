@@ -37,8 +37,8 @@ pip install gdown pandas
 
 To download the Sep 11, 2024 example lightning data: [reference](https://stackoverflow.com/questions/25010369/wget-curl-large-file-from-google-drive)
 ```
-mkdir lightning_data
 cd lightning_data
+
 gdown https://drive.google.com/uc?id=1EkYPqY0OmG5RBZH31Gb02hzey3c1Vxsx
 ```
 
