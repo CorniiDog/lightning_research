@@ -35,7 +35,7 @@ sudo apt install gzip
 pip install gdown pandas
 ```
 
-To download the Sep 27, 2024 lightning data: [reference](https://stackoverflow.com/questions/25010369/wget-curl-large-file-from-google-drive)
+To download the Sep 11, 2024 example lightning data: [reference](https://stackoverflow.com/questions/25010369/wget-curl-large-file-from-google-drive)
 ```
 mkdir lightning_data
 cd lightning_data
