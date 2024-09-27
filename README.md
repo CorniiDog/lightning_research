@@ -9,7 +9,7 @@ Connor White - Modular filtering algorithm, applied for space lightning
 1. Drag and drop the `LYLOUT_XXXXXX_XXXXXX_XXXX.dat` file into `lightning_data` folder
 2. Run `main.py`
 3. It will spit out `LYLOUT_XXXXXX_XXXXXX_XXXX.csv` in `lightning_data_output_folder`
-4. You can now open up the .csv in any python application as a pandas dataframe (can be treated near-exactly like a dictionary) via  `df = pd.read_csv('path/to/LYLOUT_XXXXXX_XXXXXX_XXXX.csv')`
+4. You can now open up the .csv in any python application as a pandas dataframe (can be treated near-exactly like a dictionary) via (inside a python script) `df = pd.read_csv('path/to/LYLOUT_XXXXXX_XXXXXX_XXXX.csv')`
 
 The CSV will have the following headers:
 
