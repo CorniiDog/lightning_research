@@ -1,7 +1,12 @@
 import os
 from datetime import datetime
-import pandas as pd # Pands for csv creation and output
-from typing import Dict, Callable, Any, Tuple # For explicit types to rigid-ify the coding process
+import pandas as pd  # Pands for csv creation and output
+from typing import (
+    Dict,
+    Callable,
+    Any,
+    Tuple,
+)  # For explicit types to rigid-ify the coding process
 
 lightning_data_folder = "lightning_data"
 data_extension = ".dat"
@@ -15,43 +20,49 @@ lightning_data_output_folder = "lightning_data_output"
 # Get all file names
 file_names = os.listdir(lightning_data_folder)
 
-def str_to_float(my_str:str) -> float:
+
+def str_to_float(my_str: str) -> float:
     """
     :param my_str: The string (i.e. `"3.12"`)
     :return: The float representing the hex (`3.12`)
     """
     return float(my_str)
 
-def str_hex_to_int(hex_str:str) -> int:
+
+def str_hex_to_int(hex_str: str) -> int:
     """
     :param hex_str: The hex string (i.e. `"0x1721"`)
     :return: An integer representing the hex (`5921`)
     """
     return int(hex_str, 16)
 
+
 # Callback functions for processing based on header, for translation
 process_handling: Dict[str, Callable[[str], Any]] = {
-    "time (UT sec of day)" : str_to_float,
-    "lat" : str_to_float,
-    "lon" : str_to_float, 
-    "alt(m)" : str_to_float, 
-    "reduced chi^2" : str_to_float,
-    "P(dBW)" : str_to_float,
-    "mask" : str_hex_to_int
+    "time (UT sec of day)": str_to_float,
+    "lat": str_to_float,
+    "lon": str_to_float,
+    "alt(m)": str_to_float,
+    "reduced chi^2": str_to_float,
+    "P(dBW)": str_to_float,
+    "mask": str_hex_to_int,
 }
+
 
 def accept_chi_below_50(chi: float) -> bool:
     return chi <= 50.0
 
+
 def data_above_20_km(alt_meters: float) -> bool:
-    km = alt_meters / 1000.0 # Convert to kilometers
+    km = alt_meters / 1000.0  # Convert to kilometers
     return km >= 20.0
+
 
 # After conversion process, you can now add callback functions for filters
 # Accepts the designated row if the function returns true
 filter_handling: Dict[str, Callable[[Any], bool]] = {
-    "reduced chi^2" : accept_chi_below_50,
-    "alt(m)" : data_above_20_km
+    "reduced chi^2": accept_chi_below_50,
+    "alt(m)": data_above_20_km,
 }
 
 
@@ -77,9 +88,9 @@ def main():
         year = dt.year
 
         # Parse through data and retreive the Pandas DataFrame
-        data_result:pd.DataFrame = None
+        data_result: pd.DataFrame = None
         with open(file_path, "r") as f:
-            data_result:pd.DataFrame  = parse_file(f, month, day, year)
+            data_result: pd.DataFrame = parse_file(f, month, day, year)
 
         # Output as csv format
         output_filename = os.path.splitext(file_name)[0] + ".csv"
@@ -89,7 +100,7 @@ def main():
         data_result.to_csv(output_file)
 
         # Note: You can retreive the csv 1:1 back as a pandas dataframe via: df = pd.read_csv('foo.csv')
-        
+
         print(data_result)
 
 
@@ -111,7 +122,7 @@ def parse_file(f, month: int, day: int, year: int) -> pd.DataFrame:
     data_result: pd.DataFrame = None
 
     for line in f:  # Iterate through each line in the file
-        line: str # Hint that line is a string
+        line: str  # Hint that line is a string
 
         # Extract data headers if not found
         if not data_headers:
@@ -124,16 +135,17 @@ def parse_file(f, month: int, day: int, year: int) -> pd.DataFrame:
         elif data_result == None:
             if line.strip() == data_body_start:
                 data_result = parse_data(f, data_headers, month, day, year)
-        
+
         # Assume fully indented the data and break the for loop
         else:
-            break 
+            break
 
     return data_result
 
 
-
-def parse_data(f, data_headers: list[str], month: int, day: int, year: int) -> pd.DataFrame:
+def parse_data(
+    f, data_headers: list[str], month: int, day: int, year: int
+) -> pd.DataFrame:
     """
     This goes through the remaining of a file and processes the entire data into something a lot easier to use in Python
 
@@ -158,9 +170,9 @@ def parse_data(f, data_headers: list[str], month: int, day: int, year: int) -> p
 
     # Parse through the lines and apply
     for line in f:
-        line: str # Hint that line is a string
-        
-        data_row = line.split() # Splits the line into designated sections
+        line: str  # Hint that line is a string
+
+        data_row = line.split()  # Splits the line into designated sections
 
         # Process and format from string to respectable type
         allow_pass = True
@@ -169,7 +181,9 @@ def parse_data(f, data_headers: list[str], month: int, day: int, year: int) -> p
 
             # Format to respectable string
             if data_headers[i] in process_handling.keys():
-                data_cell = process_handling[data_headers[i]](data_cell) # Process the data and parse it to designated format
+                data_cell = process_handling[data_headers[i]](
+                    data_cell
+                )  # Process the data and parse it to designated format
 
             # Ensure that it's within filter bounds. If it's not then break
             if data_headers[i] in filter_handling.keys():
@@ -179,18 +193,21 @@ def parse_data(f, data_headers: list[str], month: int, day: int, year: int) -> p
 
             data_row[i] = data_cell
 
-        if not allow_pass: # Skip the line and do not allow parsing
+        if not allow_pass:  # Skip the line and do not allow parsing
             continue
-        
+
         # Append to dictionary
         for i in range(len(data_row)):
-            dict_result[data_headers[i]].append(data_row[i]) # Add data cell to the designated region
+            dict_result[data_headers[i]].append(
+                data_row[i]
+            )  # Add data cell to the designated region
 
         dict_result["month"].append(month)
         dict_result["day"].append(day)
         dict_result["year"].append(year)
-            
-    return pd.DataFrame(dict_result) # Return the item as a dataframe
+
+    return pd.DataFrame(dict_result)  # Return the item as a dataframe
+
 
 def return_data_headers_if_found(
     line: str, data_header_startswith: str
