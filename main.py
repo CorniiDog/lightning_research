@@ -73,7 +73,8 @@ def main():
         # If does not end in data_extension (i.e. ".dat"), ignore
         if not file_name.endswith(data_extension):
             continue
-
+        
+        # Example: file_name = "LYLOUT_240911_155000_0600.dat"
         # Creating datetime of the file name using datetime object
         date_str = file_name[7:13]  # "240911" -> Sept 11, 2024
         time_str = file_name[14:20]  # "155000" -> 15:50:00
