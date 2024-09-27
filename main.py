@@ -1,9 +1,9 @@
 import os
 import time
 from datetime import datetime, date
-import pickle as pkl
-import pandas as pd
-from typing import Dict, Callable, Any, Tuple
+import pickle as pkl # pkl output
+import pandas as pd # Pands for csv creation and output
+from typing import Dict, Callable, Any, Tuple # For explicit types to rigid-ify the coding process
 
 lightning_data_folder = "lightning_data"
 data_extension = ".dat"
@@ -89,6 +89,8 @@ def main():
 
         # Save as csv
         data_result.to_csv(output_file)
+
+        # Note: You can retreive the csv 1:1 back as a pandas dataframe via: df = pd.read_csv('foo.csv')
         
         print(data_result)
 
