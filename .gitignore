@@ -1,2 +1,3 @@
 /.conda
-/lightning_data
+/lightning_data/*
+/lightning_data_output/*

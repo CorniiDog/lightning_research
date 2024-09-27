@@ -2,10 +2,9 @@
 
 Connor White - Determined for space lightning
 
-UT - seconds after midnight, in world time
-
 Notables:
 
+UT - seconds after midnight, in world time
 
 
 About the naming scheme (i.e. lightning_data/LYLOUT_240911_235000_0600.dat):
@@ -30,7 +29,7 @@ Prequisites:
 ```
 sudo apt install gzip
 
-pip install gdown
+pip install gdown pandas
 ```
 
 To download the Sep 27, 2024 lightning data: [reference](https://stackoverflow.com/questions/25010369/wget-curl-large-file-from-google-drive)
@@ -39,7 +38,6 @@ mkdir lightning_data
 cd lightning_data
 gdown https://drive.google.com/uc?id=1EkYPqY0OmG5RBZH31Gb02hzey3c1Vxsx
 ```
-
 
 Once you download a file, you can unzip via:
 
