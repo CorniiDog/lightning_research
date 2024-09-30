@@ -63,12 +63,14 @@ def data_above_20_km(alt_meters: float) -> bool:
     return km >= 20.0
 
 
+
 # After conversion process, you can now add callback functions for filters
 # Accepts the designated row if the function returns true
-filter_handling: Dict[str, Callable[[Any], bool]] = {
-    "reduced chi^2": accept_chi_below_50,
-    "alt(m)": data_above_20_km,
-}
+filters = [
+    ["reduced chi^2", accept_chi_below_50],
+    ["alt(m)", data_above_20_km]
+]
+
 
 
 def main():
@@ -191,15 +193,21 @@ def parse_data(
                     data_cell
                 )  # Process the data and parse it to designated format
 
-            # Ensure that it's within filter bounds. If it's not then break
-            if data_headers[i] in filter_handling.keys():
-                if not filter_handling[data_headers[i]](data_cell):
-                    allow_pass = False
+            # Ensure that it's within filters rules. If it's not then prevent padding and break
+            for i in range(len(filters)):
+                if filters[i][0] == data_headers[i] and not filters[i][1](data_cell): # If the header name is the same (0 index)
+                    allow_pass = False #Use as flag for allow_pass
                     break
+
+            # Break if allow_pass flag is false
+            if not allow_pass:
+                break
+
 
             data_row[i] = data_cell
 
-        if not allow_pass:  # Skip the line and do not allow parsing
+        # Skip the line and do not allow parsing if the allow_pass is false
+        if not allow_pass:
             continue
 
         # Append to dictionary
