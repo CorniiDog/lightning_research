@@ -6,6 +6,7 @@ from typing import (
     Callable,
     Any,
     Tuple,
+    List,
 )  # For explicit types to rigid-ify the coding process
 
 lightning_data_folder = "lightning_data"
@@ -43,6 +44,12 @@ def str_hex_to_int(hex_str: str) -> int:
 
 
 # Callback functions for processing based on header, for translation
+#
+# Dict[str, Callable[[str], Any]] 
+# Basically means we are explicitly defining a dictionary named `process_handling`
+# with the key being a string `str`, and the value being a Callable object 
+# `Callable[[str], Any]` (basically a function). The callable function must have the 
+# parameter be a string but the return value can be anything.
 process_handling: Dict[str, Callable[[str], Any]] = {
     "time (UT sec of day)": str_to_float,
     "lat": str_to_float,
@@ -66,7 +73,12 @@ def data_above_20_km(alt_meters: float) -> bool:
 
 # After conversion process, you can now add callback functions for filters
 # Accepts the designated row if the function returns true
-filters = [
+#
+# List[str, Callable]
+# We are explicitly defining a list (or array) to the variable `filters`
+# It is a List object, that the first variable must be a string and the
+# second variable must be a Callable (basically a function)
+filters: List[str, Callable] = [
     ["reduced chi^2", accept_chi_below_50],
     ["alt(m)", data_above_20_km]
 ]
