@@ -205,7 +205,7 @@ def parse_data(
 
             # Ensure that it's within filters rules. If it's not then prevent padding and break
             for j in range(len(filters)):
-                if filters[j][0] == data_headers[j] and not filters[j][1](data_cell): # If the header name is the same (0 index)
+                if filters[j][0] == data_headers[i] and not filters[j][1](data_cell): # If the header name is the same (0 index)
                     allow_pass = False #Use as flag for allow_pass
                     break
 
