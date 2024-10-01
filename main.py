@@ -268,7 +268,6 @@ def parse_data(
                     df.drop(index, inplace=True)
     
     print("Tracked repeated occurances:", counters)
-    
 
     return df
 
