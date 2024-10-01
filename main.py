@@ -266,9 +266,7 @@ def parse_data(
                 # Now compare and drop if it fails
                 if not callback_func(num_instances):
                     df.drop(index, inplace=True)
-    
-    print(counters)
-    
+        
 
     return df
 
