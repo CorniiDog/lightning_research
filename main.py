@@ -266,7 +266,9 @@ def parse_data(
                 # Now compare and drop if it fails
                 if not callback_func(num_instances):
                     df.drop(index, inplace=True)
-        
+    
+    print("Tracked repeated occurances:", counters)
+    
 
     return df
 
