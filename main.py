@@ -57,7 +57,7 @@ process_handling: Dict[str, Callable[[str], Any]] = {
     "alt(m)": str_to_float,
     "reduced chi^2": str_to_float,
     "P(dBW)": str_to_float,
-    "mask": str_hex_to_int,
+    "mask": str_hex_to_int
 }
 
 
@@ -76,9 +76,7 @@ def data_above_20_km(alt_meters: float) -> bool:
 #
 # List[str, Callable]
 # We are explicitly defining a list (or array) to the variable `filters`
-# It is a List object, that the first variable must be a string and the
-# second variable must be a Callable (basically a function)
-filters: List[str, Callable] = [
+filters: List = [
     ["reduced chi^2", accept_chi_below_50],
     ["alt(m)", data_above_20_km]
 ]
@@ -206,8 +204,8 @@ def parse_data(
                 )  # Process the data and parse it to designated format
 
             # Ensure that it's within filters rules. If it's not then prevent padding and break
-            for i in range(len(filters)):
-                if filters[i][0] == data_headers[i] and not filters[i][1](data_cell): # If the header name is the same (0 index)
+            for j in range(len(filters)):
+                if filters[j][0] == data_headers[j] and not filters[j][1](data_cell): # If the header name is the same (0 index)
                     allow_pass = False #Use as flag for allow_pass
                     break
 
