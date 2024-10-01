@@ -61,7 +61,7 @@ process_handling: Dict[str, Callable[[str], Any]] = {
 }
 
 
-def accept_chi_below_50(chi: float) -> bool:
+def accept_chi_below(chi: float) -> bool:
     return chi <= 50.0
 
 
@@ -77,10 +77,17 @@ def data_above_20_km(alt_meters: float) -> bool:
 # List[str, Callable]
 # We are explicitly defining a list (or array) to the variable `filters`
 filters: List = [
-    ["reduced chi^2", accept_chi_below_50],
+    ["reduced chi^2", accept_chi_below],
     ["alt(m)", data_above_20_km]
 ]
 
+
+def mask_count_rule(n: int) -> bool:
+    return n > 1
+
+count_required = [
+    ["mask", mask_count_rule]
+]
 
 
 def main():
@@ -182,6 +189,13 @@ def parse_data(
     dict_result["month"] = []
     dict_result["day"] = []
 
+    # Create counter object with initialization of data
+    counters = {}
+    for arr in count_required:
+        arr: List
+        header = arr[0]
+        counters[header] = {} # Add the header to the counter
+
     # Make the keys for the dictionary with the designated headers
     for header in data_headers:
         dict_result[header] = []
@@ -202,6 +216,13 @@ def parse_data(
                 data_cell = process_handling[data_headers[i]](
                     data_cell
                 )  # Process the data and parse it to designated format
+
+            # Increment counter for the designated header (this is for counter filtering)
+            if data_headers[i] in counters.keys():
+                if not data_cell in counters[data_headers[i]].keys():
+                    counters[data_headers[i]][data_cell] = 0
+                
+                counters[data_headers[i]][data_cell] += 1
 
             # Ensure that it's within filters rules. If it's not then prevent padding and break
             for j in range(len(filters)):
@@ -230,7 +251,26 @@ def parse_data(
         dict_result["day"].append(day)
         dict_result["year"].append(year)
 
-    return pd.DataFrame(dict_result)  # Return the item as a dataframe
+    df = pd.DataFrame(dict_result) # Create dataframe
+
+    # Go through every dataframe row
+    for index, row in df.iterrows():
+        # For every counter category headers
+        for header, data in counters.items():
+            
+            num_instances = data[row[header]]
+
+            for count_arr in count_required:
+                header: str = count_arr[0]
+                callback_func: Callable = count_arr[1]
+                # Now compare and drop if it fails
+                if not callback_func(num_instances):
+                    df.drop(index, inplace=True)
+    
+    print(counters)
+    
+
+    return df
 
 
 def return_data_headers_if_found(
