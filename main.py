@@ -21,6 +21,7 @@ project_dir
 ->
 -> lightning_data_output [empty, will be outputted with .csv files after main.py runs]
 -> -> LYLOUT_240911_155000_0600.csv
+-> -> ... 
 """
 
 ######################################################################################################
@@ -124,11 +125,8 @@ dp.count_required = [
 # main function that 
 ######################################################################################################
 def main():
-    # Get all file names
-    file_names = os.listdir(lightning_data_folder)
-
-    # Go through all names
-    for file_name in file_names:
+    # Go through all filenames
+    for file_name in os.listdir(lightning_data_folder):
 
         # If does not end in data_extension (i.e. ".dat"), ignore
         if not file_name.endswith(data_extension):
@@ -142,25 +140,21 @@ def main():
         dt_format = "%Y%m%d %H%M%S"  # Formatting for it
         dt = datetime.strptime(dt_str, dt_format)
 
+        # Obtain the file path relative to project directory to open
         file_path = os.path.join(lightning_data_folder, file_name)
-
-        month = dt.month
-        day = dt.day
-        year = dt.year
 
         # Parse through data and retreive the Pandas DataFrame
         data_result: pd.DataFrame = None
         with open(file_path, "r") as f:
-            data_result = dp.parse_file(f, month, day, year)
+            data_result = dp.parse_file(f, dt.month, dt.day, dt.year)
 
-        # Output as csv format
+        # Create a filename with the .csv extension w/ the path to the file directory
         output_filename = os.path.splitext(file_name)[0] + ".csv"
         output_file = os.path.join(lightning_data_output_folder, output_filename)
 
         # Save as csv
-        data_result.to_csv(output_file)
-
         # Note: You can retreive the csv 1:1 back as a pandas dataframe via: df = pd.read_csv('foo.csv')
+        data_result.to_csv(output_file)
 
         print(data_result)
 
