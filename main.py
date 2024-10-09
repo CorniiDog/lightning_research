@@ -1,6 +1,8 @@
 import os
 from datetime import datetime
 import pandas as pd  # Pands for csv creation and output
+import matplotlib.pyplot as plt # For 3D plotting
+import time
 from typing import (
     Dict,
     Callable,
@@ -122,7 +124,7 @@ dp.count_required = [
 
 
 ######################################################################################################
-# main function that 
+# main function that goes through the files 
 ######################################################################################################
 def main():
     # Go through all filenames
@@ -132,21 +134,20 @@ def main():
         if not file_name.endswith(data_extension):
             continue
         
-        # Example: file_name = "LYLOUT_240911_155000_0600.dat"
-        # Creating datetime of the file name using datetime object
-        date_str = file_name[7:13]  # "240911" -> Sept 11, 2024
-        time_str = file_name[14:20]  # "155000" -> 15:50:00
-        dt_str = f"20{date_str} {time_str}"  # Adds "20" to the year to make it "2024"
-        dt_format = "%Y%m%d %H%M%S"  # Formatting for it
-        dt = datetime.strptime(dt_str, dt_format)
+        data_result: pd.DataFrame = get_dataframe(lightning_data_folder, file_name)
 
-        # Obtain the file path relative to project directory to open
-        file_path = os.path.join(lightning_data_folder, file_name)
+        # Vectorizing lightning and displaying
+        fig = plt.figure()
+        ax = fig.add_subplot(projection='3d')
+        ax.scatter(data_result["lat"].iloc[0], data_result["lon"].iloc[0], data_result["alt(m)"].iloc[0], marker="o")
 
-        # Parse through data and retreive the Pandas DataFrame
-        data_result: pd.DataFrame = None
-        with open(file_path, "r") as f:
-            data_result = dp.parse_file(f, dt.month, dt.day, dt.year)
+        ax.set_xlabel('Latitude')
+        ax.set_ylabel('Longitude')
+        ax.set_zlabel('Altitude (m)')
+        
+        fig.show()
+        time.sleep(9999)
+
 
         # Create a filename with the .csv extension w/ the path to the file directory
         output_filename = os.path.splitext(file_name)[0] + ".csv"
@@ -158,6 +159,29 @@ def main():
 
         print(data_result)
 
+######################################################################################################
+# Helper functions for processing
+######################################################################################################
+def get_dataframe(lightning_data_folder: str, file_name: str) -> pd.DataFrame | None:
+    """
+    Helper function for getting a pandas DataFrame from a .dat file
+    """
+    # Example: file_name = "LYLOUT_240911_155000_0600.dat"
+    # Creating datetime of the file name using datetime object
+    date_str = file_name[7:13]  # "240911" -> Sept 11, 2024
+    time_str = file_name[14:20]  # "155000" -> 15:50:00
+    dt_str = f"20{date_str} {time_str}"  # Adds "20" to the year to make it "2024"
+    dt_format = "%Y%m%d %H%M%S"  # Formatting for it
+    dt = datetime.strptime(dt_str, dt_format)
+
+    # Obtain the file path relative to project directory to open
+    file_path = os.path.join(lightning_data_folder, file_name)
+
+    # Parse through data and retreive the Pandas DataFrame
+    data_result: pd.DataFrame = None
+    with open(file_path, "r") as f:
+        data_result = dp.parse_file(f, dt.month, dt.day, dt.year)
+    return data_result
 
 if __name__ == "__main__":
     main()

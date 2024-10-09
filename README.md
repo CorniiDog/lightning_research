@@ -9,7 +9,7 @@ Prequisites:
 ```
 sudo apt install gzip
 
-pip install gdown pandas
+pip install gdown pandas matplotlib
 ```
 
 ## Instructions
