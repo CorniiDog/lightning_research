@@ -34,8 +34,6 @@ lightning_data_folder: str = "lightning_data"
 # LYLOUT_240911_155000_0600.dat <-
 data_extension: str = ".dat"
 
-lightning_data_output_folder: str = "lightning_data_output"
-
 ######################################################################################################
 # dataParser.py configuration parameters
 #  Note: These configure the parser such that when `dp.parse_file(f, month, day, year)` is ran it
@@ -127,34 +125,54 @@ dp.count_required = [
 # main function that goes through the files 
 ######################################################################################################
 def main():
-    # Go through all filenames
-    for file_name in os.listdir(lightning_data_folder):
+    st.title("Lightning Data Parser")
+    
+    # Get list of .dat files
+    dat_files = [f for f in os.listdir(lightning_data_folder) if f.endswith(data_extension)]
+    
+    # Streamlit file selector
+    selected_file = st.selectbox("Select a data file:", dat_files)
+    
+    if selected_file:
+        # Parse the selected file
+        data_result: pd.DataFrame = dp.get_dataframe(lightning_data_folder, selected_file)
 
-        # If does not end in data_extension (i.e. ".dat"), ignore
-        if not file_name.endswith(data_extension):
-            continue
+        # Display the parsed DataFrame
+        st.write("Parsed Data:")
+        st.dataframe(data_result)
         
-        data_result: pd.DataFrame = dp.get_dataframe(lightning_data_folder, file_name)
+        # Option to download the DataFrame as a CSV
+        csv_output = data_result.to_csv(index=False)
+        st.download_button(
+            label="Download CSV",
+            data=csv_output,
+            file_name=f"{os.path.splitext(selected_file)[0]}.csv",
+            mime="text/csv"
+        )
 
-        # Vectorizing lightning and displaying
-        fig = plt.figure()
-        ax = fig.add_subplot(projection='3d')
-        ax.scatter(data_result["lat"].iloc[0], data_result["lon"].iloc[0], data_result["alt(m)"].iloc[0], marker="o")
+        # Option to delete the selected file
+        if st.button(f"Delete {selected_file}"):
+            if delete_file(selected_file):
+                st.success(f"File '{selected_file}' deleted successfully!")
+            else:
+                st.error(f"Error: Could not delete file '{selected_file}'.")
 
-        ax.set_xlabel('Latitude')
-        ax.set_ylabel('Longitude')
-        ax.set_zlabel('Altitude (m)')
-        
 
-        # Create a filename with the .csv extension w/ the path to the file directory
-        output_filename = os.path.splitext(file_name)[0] + ".csv"
-        output_file = os.path.join(lightning_data_output_folder, output_filename)
+######################################################################################################
+# Helper functions for file management
+######################################################################################################
+def save_uploaded_file(uploaded_file):
+    file_path = os.path.join(lightning_data_folder, uploaded_file.name)
+    with open(file_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+    return file_path
 
-        # Save as csv
-        # Note: You can retreive the csv 1:1 back as a pandas dataframe via: df = pd.read_csv('foo.csv')
-        data_result.to_csv(output_file)
-
-        print(data_result)
+def delete_file(file_name):
+    file_path = os.path.join(lightning_data_folder, file_name)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+        return True
+    return False
         
 if __name__ == "__main__":
     main()
