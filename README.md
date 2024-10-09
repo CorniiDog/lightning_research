@@ -7,9 +7,9 @@ Connor White - Modular filtering algorithm, applied for space lightning
 Prequisites:
 
 ```
-sudo apt install gzip
+sudo apt install gzip 
 
-pip install gdown pandas matplotlib
+pip install gdown pandas PyQt5 matplotlib streamlit
 ```
 
 ## Instructions

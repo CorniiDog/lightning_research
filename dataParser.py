@@ -1,4 +1,5 @@
 import pandas as pd
+import os
 from datetime import datetime
 from typing import (
     Dict,
@@ -242,3 +243,25 @@ def return_data_headers_if_found(
 
         return data_headers
     return None
+
+
+def get_dataframe(lightning_data_folder: str, file_name: str) -> pd.DataFrame | None:
+    """
+    Helper function for getting a pandas DataFrame from a .dat file
+    """
+    # Example: file_name = "LYLOUT_240911_155000_0600.dat"
+    # Creating datetime of the file name using datetime object
+    date_str = file_name[7:13]  # "240911" -> Sept 11, 2024
+    time_str = file_name[14:20]  # "155000" -> 15:50:00
+    dt_str = f"20{date_str} {time_str}"  # Adds "20" to the year to make it "2024"
+    dt_format = "%Y%m%d %H%M%S"  # Formatting for it
+    dt = datetime.strptime(dt_str, dt_format)
+
+    # Obtain the file path relative to project directory to open
+    file_path = os.path.join(lightning_data_folder, file_name)
+
+    # Parse through data and retreive the Pandas DataFrame
+    data_result: pd.DataFrame = None
+    with open(file_path, "r") as f:
+        data_result = parse_file(f, dt.month, dt.day, dt.year)
+    return data_result
