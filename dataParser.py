@@ -1,6 +1,8 @@
 import pandas as pd
 import os
+import plotly.graph_objects as go
 from datetime import datetime
+import colorsys
 from typing import (
     Dict,
     Callable,
@@ -214,8 +216,6 @@ def parse_data(
                 if not callback_func(num_instances):
                     df.drop(index, inplace=True)
     
-    print("Tracked repeated occurances:", counters)
-
     return df
 
 
@@ -265,3 +265,68 @@ def get_dataframe(lightning_data_folder: str, file_name: str) -> pd.DataFrame | 
     with open(file_path, "r") as f:
         data_result = parse_file(f, dt.month, dt.day, dt.year)
     return data_result
+
+
+def generate_colors(num_colors):
+    """Generate a list of unique dark colors using HSV/HSL color space."""
+    colors = []
+    for i in range(num_colors):
+        hue = i / num_colors  # Hue is evenly spaced for unique colors
+        saturation = 0.5  # Medium saturation for dark colors
+        lightness = 0.3  # Dark lightness for dark colors
+        rgb = colorsys.hls_to_rgb(hue, lightness, saturation)
+        colors.append('#{:02x}{:02x}{:02x}'.format(int(rgb[0] * 255), int(rgb[1] * 255), int(rgb[2] * 255)))
+    return colors
+
+def color_df(df: pd.DataFrame, identifier: str) -> pd.DataFrame:
+    """Apply unique colors to the DataFrame based on the `identifier` column values."""
+    # Get the unique mask/identifier values
+    unique_values = df[identifier].unique()
+
+    # Assign a unique dark color to each unique value
+    value_colors = {val: color for val, color in zip(unique_values, generate_colors(len(unique_values)))}
+
+    # Function to apply colors based on the identifier value
+    def color_mask(val):
+        if val in value_colors:
+            return f'background-color: {value_colors[val]}'
+        return ''
+
+    # Apply the color function to the 'identifier' column and return the styled DataFrame
+    return df.style.applymap(color_mask, subset=[identifier])
+
+def plot_interactive_3d(df: pd.DataFrame, identifier: str):
+    """
+    Create an interactive 3D scatter plot for latitude, longitude, and altitude, colored by mask.
+
+    :param df: DataFrame containing lat, long, alt, and mask data
+    :param identifier: Column to color the plot based on
+    :return: Plotly figure object
+    """
+    fig = go.Figure()
+
+    unique_values = df[identifier].unique()
+    value_colors = {val: color for val, color in zip(unique_values, generate_colors(len(unique_values)))}
+
+    for mask_value, color in value_colors.items():
+        subset = df[df[identifier] == mask_value]
+        fig.add_trace(go.Scatter3d(
+            x=subset['lat'],
+            y=subset['lon'],
+            z=subset['alt(m)'],
+            mode='markers',
+            marker=dict(size=5, color=color),
+            name=f'{identifier} {mask_value}'
+        ))
+
+    fig.update_layout(
+        scene=dict(
+            xaxis_title='Latitude',
+            yaxis_title='Longitude',
+            zaxis_title='Altitude (m)'
+        ),
+        margin=dict(l=0, r=0, b=0, t=0),
+        height=700
+    )
+
+    return fig

@@ -20,10 +20,6 @@ import dataParser as dp # dataParser.py
 # -> lightning_data [containing the .dat files] 
 # -> -> LYLOUT_240911_155000_0600.dat
 # -> -> ...
-# ->
-# -> lightning_data_output [empty, will be outputted with .csv files after main.py runs]
-# -> -> LYLOUT_240911_155000_0600.csv
-# -> -> ... 
 
 
 ######################################################################################################
@@ -46,27 +42,6 @@ dp.data_header_startswith = "Data:"
 # *** data *** <- Identifying the start of the data
 dp.data_body_start = "*** data ***"
 
-######################################################################################################
-# dataParser.py parameter procedure to translate the read string to more appreciable types
-######################################################################################################
-def str_to_float(my_str: str) -> float:
-    """
-    Converts a string to a float\n
-    :param my_str: The string (i.e. `"3.12"`)
-    :return: The float representing the hex (`3.12`)
-    """
-    return float(my_str)
-
-
-def str_hex_to_int(hex_str: str) -> int:
-    """
-    Converts a hexcode (i.e. `0x1721`) to an int (`5921`)\n
-    :param hex_str: The hex string (i.e. `"0x1721"`)
-    :return: An integer representing the hex (`5921`)
-    """
-    return int(hex_str, 16)
-
-
 # Callback functions for processing based on header, for translation
 #
 # Dict[str, Callable[[str], Any]] 
@@ -75,49 +50,41 @@ def str_hex_to_int(hex_str: str) -> int:
 # `Callable[[str], Any]` (basically a function). The callable function must have the 
 # parameter be a string but the return value can be anything.
 dp.process_handling = {
-    "time (UT sec of day)": str_to_float,
-    "lat": str_to_float,
-    "lon": str_to_float,
-    "alt(m)": str_to_float,
-    "reduced chi^2": str_to_float,
-    "P(dBW)": str_to_float,
-    "mask": str_hex_to_int
+    "time (UT sec of day)": lambda my_str: float(my_str),  # Convert to float
+    "lat": lambda my_str: float(my_str),  # Convert to float
+    "lon": lambda my_str: float(my_str),  # Convert to float
+    "alt(m)": lambda my_str: float(my_str),  # Convert to float
+    "reduced chi^2": lambda my_str: float(my_str),  # Convert to float
+    "P(dBW)": lambda my_str: float(my_str), # Convert to float
+    "mask": lambda hex_str: int(hex_str, 16) # Convert the hex-code mask to decimal
 }
 
 ######################################################################################################
-# dataParser.py filter procedure to accept data between ranges, and reject rows that don't acept
+# dataParser.py filter procedure to accept data between ranges, and reject rows that don't accept
 ######################################################################################################
-def accept_chi_below(chi: float) -> bool:
-    return chi <= 50.0
 
+# Sliders for filter parameters
+st.sidebar.header("Filter Settings (`-1` = disable)")
+chi_min = st.sidebar.slider("Reduced chi^2 min", 0, 100, 0)
+chi_max = st.sidebar.slider("Reduced chi^2 max", -1, 1000, 50)
+km_min = st.sidebar.slider("Altitude (km) min", 0, 100, 20)
+km_max = st.sidebar.slider("Altitude (km) max", -1, 100, -1)
+mask_count_min = st.sidebar.slider("Mask minimum occurances", 1, 10, 2)
 
-def data_above_20_km(alt_meters: float) -> bool:
-    km = alt_meters / 1000.0  # Convert to kilometers
-    return km >= 20.0
-
-
-# After conversion process, you can now add callback functions for filters
-# Accepts the designated row if the function returns true
-#
-# List[str, Callable]
-# We are explicitly defining a list (or array) to the variable `filters`
+# Update the dp.filters and dp.count_required dynamically
 dp.filters = [
-    ["reduced chi^2", accept_chi_below],
-    ["alt(m)", data_above_20_km]
+    ["reduced chi^2", lambda chi: chi >= chi_min],
+    ["alt(m)", lambda alt: alt >= km_min * 1000],
 ]
 
-######################################################################################################
-# dataParser.py count procedure to accept data such that there must be a given
-# number of occurances to be accepted (1, 2, 3, etc..?)
-######################################################################################################
-def mask_count_rule(n: int) -> bool:
-    return n > 1
+if chi_max >= 0:
+    dp.filters.append(["reduced chi^2", lambda chi: chi <= chi_max])
 
-# This determines count instances rule
-# That is, if you provide a header, you provide a function for the count of items
-# For example, for 1 >= n >= 2 that requires instances to be between 1 and 2 occurances
+if km_max > 0:
+    dp.filters.append(["alt(m)", lambda alt: alt <= km_max * 1000])
+
 dp.count_required = [
-    ["mask", mask_count_rule]
+    ["mask", lambda count: count >= mask_count_min]
 ]
 
 
@@ -126,6 +93,17 @@ dp.count_required = [
 ######################################################################################################
 def main():
     st.title("Lightning Data Parser")
+
+    # Section: File Upload
+    st.header("Upload a `.dat` file")
+    uploaded_file = st.file_uploader("Choose a .dat file", type="dat")
+    
+    if uploaded_file is not None:
+        save_path = save_uploaded_file(uploaded_file)
+        st.success(f"File '{uploaded_file.name}' uploaded successfully!")
+
+    # Section: File Management
+    st.header("Manage `.dat` files")
     
     # Get list of .dat files
     dat_files = [f for f in os.listdir(lightning_data_folder) if f.endswith(data_extension)]
@@ -137,9 +115,15 @@ def main():
         # Parse the selected file
         data_result: pd.DataFrame = dp.get_dataframe(lightning_data_folder, selected_file)
 
+        # Plot 3D scatter
+        fig = dp.plot_interactive_3d(data_result, 'mask')
+
+        # Display the 3D plot in Streamlit
+        st.plotly_chart(fig)
+
         # Display the parsed DataFrame
         st.write("Parsed Data:")
-        st.dataframe(data_result)
+        st.dataframe(dp.color_df(data_result, 'mask'))
         
         # Option to download the DataFrame as a CSV
         csv_output = data_result.to_csv(index=False)
