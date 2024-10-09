@@ -11,6 +11,17 @@ from typing import (
 
 import dataParser as dp # dataParser.py
 
+"""
+File tree structure:
+
+project_dir
+-> lightning_data [containing the .dat files]
+-> -> LYLOUT_240911_155000_0600.dat
+-> -> ...
+->
+-> lightning_data_output [empty, will be outputted with .csv files after main.py runs]
+-> -> LYLOUT_240911_155000_0600.csv
+"""
 
 ######################################################################################################
 ## Folder and Output
