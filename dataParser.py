@@ -454,9 +454,9 @@ def generate_integer_chunks(
             lon_start += chunk_size
         lat_start += chunk_size
 
+downsampling_factor = 10  # Using every 5th point for downsampling
 
-
-def plot_interactive_3d(df: pd.DataFrame, identifier: str):
+def plot_interactive_3d(df: pd.DataFrame, identifier: str, do_topography=True):
     """
     Create an interactive 3D scatter plot for latitude, longitude, and altitude, colored by mask.
 
@@ -473,35 +473,35 @@ def plot_interactive_3d(df: pd.DataFrame, identifier: str):
 
     fig = go.Figure()
 
-    for idx, chunk in enumerate(generate_integer_chunks(params['south'], params['north'], params['west'], params['east'], chunk_size), start=1):
-        bbox_key = f"{chunk['south']}_{chunk['north']}_{chunk['west']}_{chunk['east']}"
-        pickle_file = f"topography_cache/{bbox_key}.pkl"
+    if do_topography:
+        for idx, chunk in enumerate(generate_integer_chunks(params['south'], params['north'], params['west'], params['east'], chunk_size), start=1):
+            bbox_key = f"{chunk['south']}_{chunk['north']}_{chunk['west']}_{chunk['east']}"
+            pickle_file = f"topography_cache/{bbox_key}.pkl"
 
-        # Step 1: Cache or load the topography data
-        da = cache_topography_data(pickle_file, params)
+            # Step 1: Cache or load the topography data
+            da = cache_topography_data(pickle_file, params)
 
-        # Step 2: Convert the DataArray to a NumPy array for the topography surface plot
-        elevation_data = da.values.squeeze()
+            # Step 2: Convert the DataArray to a NumPy array for the topography surface plot
+            elevation_data = da.values.squeeze()
 
-        # Extract latitude and longitude from the DataArray
-        latitudes = da.y.values
-        longitudes = da.x.values
+            # Extract latitude and longitude from the DataArray
+            latitudes = da.y.values
+            longitudes = da.x.values
 
-        # Step 3: Downsample the topography data for faster plotting
-        # Adjust the factor based on your performance needs
-        factor = 10  # Using every 5th point for downsampling
-        elevation_data_downsampled = elevation_data[::factor, ::factor]
-        latitudes_downsampled = latitudes[::factor]
-        longitudes_downsampled = longitudes[::factor]
+            # Step 3: Downsample the topography data for faster plotting
+            # Adjust the factor based on your performance needs
+            elevation_data_downsampled = elevation_data[::downsampling_factor, ::downsampling_factor]
+            latitudes_downsampled = latitudes[::downsampling_factor]
+            longitudes_downsampled = longitudes[::downsampling_factor]
 
-        fig.add_trace(go.Surface(
-            z=elevation_data_downsampled,
-            x=longitudes_downsampled,
-            y=latitudes_downsampled,
-            colorscale='Viridis',
-            opacity=0.7,
-            showscale=True
-        ))
+            fig.add_trace(go.Surface(
+                z=elevation_data_downsampled,
+                x=longitudes_downsampled,
+                y=latitudes_downsampled,
+                colorscale='Viridis',
+                opacity=0.7,
+                showscale=True
+            ))
 
 
     # If cities are able to be loaded, then load cities

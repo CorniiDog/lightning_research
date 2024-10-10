@@ -77,6 +77,10 @@ km_min = st.sidebar.slider("Altitude (km) min", 0, 100, 20)
 km_max = st.sidebar.slider("Altitude (km) max", -1, 1000, -1)
 mask_count_min = st.sidebar.slider("Mask minimum occurances", 1, 10, 2)
 
+do_topography_mapping = st.sidebar.checkbox(label="Enable Topography", value=False)
+dp.downsampling_factor = st.sidebar.slider("Topography Downsampling (Size Reduction) Factor", 1, 100, 20)
+
+
 # Update the dp.filters and dp.count_required dynamically
 dp.filters = [
     ["reduced chi^2", lambda chi: chi >= chi_min],
@@ -148,9 +152,9 @@ def main():
         dp.params["south"] = lowest_lat - 1
         dp.params["north"] = highest_lat + 1
 
-
-        # Plot 3D scatter
-        fig = dp.plot_interactive_3d(data_result, 'mask')
+        with st.spinner('Indexing Topography Data...'):
+            # Plot 3D scatter
+            fig = dp.plot_interactive_3d(data_result, 'mask', do_topography=do_topography_mapping)
 
         # Display the 3D plot in Streamlit
         col1.plotly_chart(fig)
