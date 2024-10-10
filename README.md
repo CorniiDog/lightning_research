@@ -54,3 +54,12 @@ gunzip *.gz
 ```
 
 7. Then, to run, do `streamlit run main.py`
+
+
+## Credits/Contributions
+
+- Topography data provided by OpenTopography: https://opentopography.org/
+- Populated places (names with latitude and longitude of cities) provided by Natural Earth: https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-populated-places/
+- Lightning data provided by Timothy Logan, Director of the Houston Lightning Mapping Array (HLMA) Network: https://artsci.tamu.edu/atmos-science/contact/profiles/timothy-logan.html
+
+
