@@ -2,7 +2,12 @@ import pandas as pd
 import os
 import plotly.graph_objects as go
 from datetime import datetime
-import colorsys
+import numpy as np
+import colorsys, pickle
+from bmi_topography import Topography
+import geopandas as gpd
+import rasterio
+import fsspec
 from typing import (
     Dict,
     Callable,
@@ -10,6 +15,13 @@ from typing import (
     Tuple,
     List,
 )  # For explicit types to rigid-ify the coding process
+
+
+params = Topography.DEFAULT.copy()
+params["south"] = 25.84  # Modify these coordinates for your area of interest (Texas)
+params["north"] = 36.50
+params["west"] = -106.65
+params["east"] = -93.51
 
 # Essential functions to use
 count_required = []
@@ -279,21 +291,44 @@ def generate_colors(num_colors):
     return colors
 
 def color_df(df: pd.DataFrame, identifier: str) -> pd.DataFrame:
-    """Apply unique colors to the DataFrame based on the `identifier` column values."""
+    """Apply unique colors to rows in the DataFrame based on the `identifier` column values."""
     # Get the unique mask/identifier values
     unique_values = df[identifier].unique()
 
     # Assign a unique dark color to each unique value
     value_colors = {val: color for val, color in zip(unique_values, generate_colors(len(unique_values)))}
 
-    # Function to apply colors based on the identifier value
-    def color_mask(val):
-        if val in value_colors:
-            return f'background-color: {value_colors[val]}'
-        return ''
+    # Function to apply row color based on the identifier value
+    def color_row(row):
+        value = row[identifier]
+        if value in value_colors:
+            return [f'background-color: {value_colors[value]}' for _ in row]
+        return [''] * len(row)
 
-    # Apply the color function to the 'identifier' column and return the styled DataFrame
-    return df.style.applymap(color_mask, subset=[identifier])
+    # Apply the color function to entire rows and return the styled DataFrame
+    return df.style.apply(color_row, axis=1)
+
+def cache_topography_data(pickle_file, params):
+    # Check if the pickle file already exists
+    if os.path.exists(pickle_file):
+        print(f"Loading data from cache: {pickle_file}")
+        with open(pickle_file, 'rb') as f:
+            return pickle.load(f)
+    else:
+        # Fetch the topography data if the pickle file does not exist
+        print("Fetching new topography data from OpenTopography...")
+        topo_data = Topography(**params)
+        topo_data.fetch()  # Download the data
+        da = topo_data.load()  # Load into xarray DataArray
+
+        # Save the data to a pickle file for future use
+        with open(pickle_file, 'wb') as f:
+            pickle.dump(da, f)
+        print(f"Data cached as: {pickle_file}")
+        return da
+    
+cities_file: str | None = None
+
 
 def plot_interactive_3d(df: pd.DataFrame, identifier: str):
     """
@@ -303,30 +338,127 @@ def plot_interactive_3d(df: pd.DataFrame, identifier: str):
     :param identifier: Column to color the plot based on
     :return: Plotly figure object
     """
-    fig = go.Figure()
 
+    # Topography generation
+    # Topography generation
+    # Generate a unique filename based on the bounding box
+    bbox_key = f"{params['south']}_{params['north']}_{params['west']}_{params['east']}"
+    pickle_file = f"topography_{bbox_key}.pkl"
+
+    # Step 1: Cache or load the topography data
+    da = cache_topography_data(pickle_file, params)
+
+    # Step 2: Convert the DataArray to a NumPy array for the topography surface plot
+    elevation_data = da.values.squeeze()
+
+    # Extract latitude and longitude from the DataArray
+    latitudes = da.y.values
+    longitudes = da.x.values
+
+    # Step 3: Downsample the topography data for faster plotting
+    # Adjust the factor based on your performance needs
+    factor = 10  # Using every 5th point for downsampling
+    elevation_data_downsampled = elevation_data[::factor, ::factor]
+    latitudes_downsampled = latitudes[::factor]
+    longitudes_downsampled = longitudes[::factor]
+
+    # Step 4: Create the surface plot for topography
+    fig = go.Figure(data=[go.Surface(
+        z=elevation_data_downsampled,
+        x=longitudes_downsampled,
+        y=latitudes_downsampled,
+        colorscale='Viridis',
+        opacity=0.7,
+        showscale=True
+    )])
+
+    # If cities are able to be loaded, then load cities
+    if cities_file:
+        gdf = gpd.read_file(cities_file)
+        gdf = gdf.to_crs(epsg=4326)
+
+        # Extract latitude and longitude from the geometry column
+        gdf['latitude'] = gdf.geometry.y
+        gdf['longitude'] = gdf.geometry.x
+
+        # Filter the GeoDataFrame based on the bounding box and create a copy
+        filtered_gdf = gdf[
+            (gdf['latitude'] >= params['south']) &
+            (gdf['latitude'] <= params['north']) &
+            (gdf['longitude'] >= params['west']) &
+            (gdf['longitude'] <= params['east'])
+        ].copy()  # Added .copy() here
+        
+        # Safely assign a new column using .loc to avoid the warning
+        filtered_gdf.loc[:, 'altitude'] = 0
+
+        # Add cities as Scatter3d
+        fig.add_trace(go.Scatter3d(
+            x=filtered_gdf['longitude'],
+            y=filtered_gdf['latitude'],
+            z=filtered_gdf['altitude'],
+            mode='text',
+            name='Populated Places',
+            hoverinfo='text',
+            hovertext=filtered_gdf['NAME'],
+            text = filtered_gdf['NAME']
+        ))
+
+
+
+    # Step 5: Generate colors for scatter points (lightning data)
     unique_values = df[identifier].unique()
     value_colors = {val: color for val, color in zip(unique_values, generate_colors(len(unique_values)))}
 
+    # Step 6: Limit the number of scatter points (lightning data) for faster plotting
+    max_points = 1000  # Adjust based on performance needs
+    if len(df) > max_points:
+        df_sampled = df.sample(n=max_points, random_state=42)
+        print(f"Sampling {max_points} out of {len(df)} lightning points for plotting.")
+    else:
+        df_sampled = df
+
+    # Step 7: Overlay the lightning data (scatter points) on top of the topography surface
     for mask_value, color in value_colors.items():
-        subset = df[df[identifier] == mask_value]
+        subset = df_sampled[df_sampled[identifier] == mask_value]  # Subset of data matching the current mask_value
+        if subset.empty:
+            continue  # Skip if no data for this mask_value
         fig.add_trace(go.Scatter3d(
-            x=subset['lat'],
-            y=subset['lon'],
-            z=subset['alt(m)'],
+            x=subset['lon'],    # Longitude corresponds to x-axis
+            y=subset['lat'],    # Latitude corresponds to y-axis
+            z=subset['alt(m)'], # Altitude corresponds to z-axis
             mode='markers',
-            marker=dict(size=5, color=color),
-            name=f'{identifier} {mask_value}'
+            marker=dict(
+                size=5,
+                color=color,
+                opacity=0.9
+            ),
+            name=f'{identifier} {mask_value}',
+            showlegend=False
         ))
 
     fig.update_layout(
-        scene=dict(
-            xaxis_title='Latitude',
-            yaxis_title='Longitude',
-            zaxis_title='Altitude (m)'
+    scene=dict(
+        xaxis=dict(
+            title='Longitude',
+            gridcolor='lightgray',  # Lighter color for gridlines
+            zerolinecolor='lightgray',  # Lighter color for axis lines
+            range=[min(params['west'], np.min(subset['lon'])), max(params['east'], np.max(subset['lon']))]
         ),
-        margin=dict(l=0, r=0, b=0, t=0),
-        height=700
+        yaxis=dict(
+            title='Latitude',
+            gridcolor='lightgray',  # Lighter color for gridlines
+            zerolinecolor='lightgray',  # Lighter color for axis lines
+            range=[min(params['south'], np.min(subset['lat'])), max(params['north'], np.max(subset['lon']))]
+        ),
+        zaxis=dict(
+            title='Altitude (m)',
+            gridcolor='lightgray',  # Lighter color for gridlines
+            zerolinecolor='lightgray',  # Lighter color for axis lines
+            nticks=10,
+        )
+    ),
+    height=400,
     )
 
     return fig

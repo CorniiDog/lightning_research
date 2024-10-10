@@ -9,8 +9,24 @@ Prequisites:
 ```
 sudo apt install gzip 
 
-pip install gdown pandas PyQt5 matplotlib plotly streamlit
+pip install gdown pandas PyQt5 matplotlib plotly streamlit bmi-topography geopandas fsspec requests aiohttp
 ```
+
+Then, you need to get an OpenTopography API key here: https://opentopography.org/
+
+When you get you API key, then you need to add the environment variable of the API key in your bashrc:
+```
+nano ~/.bashrc
+```
+
+Then add to the bottom of the file:
+
+```
+export OPENTOPOGRAPHY_API_KEY=your_api_key
+```
+Replace `your_api_key` with the API key from the website
+
+Then restart the terminal
 
 ## Instructions
 

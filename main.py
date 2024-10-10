@@ -4,6 +4,8 @@ import pandas as pd  # Pands for csv creation and output
 import matplotlib.pyplot as plt # For 3D plotting
 import streamlit as st # Streamlit
 
+st.set_page_config(page_title=None, page_icon=None, layout="wide", initial_sidebar_state="auto", menu_items=None)
+
 from typing import (
     Dict,
     Callable,
@@ -29,6 +31,8 @@ lightning_data_folder: str = "lightning_data"
 
 # LYLOUT_240911_155000_0600.dat <-
 data_extension: str = ".dat"
+
+dp.cities_file = "ne_110m_populated_places/ne_110m_populated_places.shp"
 
 ######################################################################################################
 # dataParser.py configuration parameters
@@ -60,6 +64,15 @@ dp.process_handling = {
 }
 
 ######################################################################################################
+# Topography data
+# Can find respective lat and long to use here: https://www.latlong.net/
+######################################################################################################
+dp.params["south"] = 27.458283  # Modify these coordinates for your area of interest (Texas)
+dp.params["north"] = 33.481568
+dp.params["west"] = -101.810989
+dp.params["east"] = -91.924764
+
+######################################################################################################
 # dataParser.py filter procedure to accept data between ranges, and reject rows that don't accept
 ######################################################################################################
 
@@ -68,7 +81,7 @@ st.sidebar.header("Filter Settings (`-1` = disable)")
 chi_min = st.sidebar.slider("Reduced chi^2 min", 0, 100, 0)
 chi_max = st.sidebar.slider("Reduced chi^2 max", -1, 1000, 50)
 km_min = st.sidebar.slider("Altitude (km) min", 0, 100, 20)
-km_max = st.sidebar.slider("Altitude (km) max", -1, 100, -1)
+km_max = st.sidebar.slider("Altitude (km) max", -1, 1000, -1)
 mask_count_min = st.sidebar.slider("Mask minimum occurances", 1, 10, 2)
 
 # Update the dp.filters and dp.count_required dynamically
@@ -96,11 +109,13 @@ def main():
 
     # Section: File Upload
     st.header("Upload a `.dat` file")
-    uploaded_file = st.file_uploader("Choose a .dat file", type="dat")
+    uploaded_file = st.file_uploader("", type="dat")
     
     if uploaded_file is not None:
         save_path = save_uploaded_file(uploaded_file)
         st.success(f"File '{uploaded_file.name}' uploaded successfully!")
+
+    st.divider()
 
     # Section: File Management
     st.header("Manage `.dat` files")
@@ -112,6 +127,9 @@ def main():
     selected_file = st.selectbox("Select a data file:", dat_files)
     
     if selected_file:
+
+        col1, col2 = st.columns(2)
+
         # Parse the selected file
         data_result: pd.DataFrame = dp.get_dataframe(lightning_data_folder, selected_file)
 
@@ -119,11 +137,11 @@ def main():
         fig = dp.plot_interactive_3d(data_result, 'mask')
 
         # Display the 3D plot in Streamlit
-        st.plotly_chart(fig)
+        col1.plotly_chart(fig)
 
         # Display the parsed DataFrame
-        st.write("Parsed Data:")
-        st.dataframe(dp.color_df(data_result, 'mask'))
+        col2.write("Parsed Data:")
+        col2.dataframe(dp.color_df(data_result, 'mask'))
         
         # Option to download the DataFrame as a CSV
         csv_output = data_result.to_csv(index=False)
