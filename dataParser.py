@@ -8,6 +8,7 @@ from bmi_topography import Topography
 import geopandas as gpd
 import rasterio
 import fsspec
+import math
 from typing import (
     Dict,
     Callable,
@@ -326,8 +327,133 @@ def cache_topography_data(pickle_file, params):
             pickle.dump(da, f)
         print(f"Data cached as: {pickle_file}")
         return da
-    
+
+def get_tile_indices(south: float, north: float, west: float, east: float, tile_size: float = 1.0) -> List[Tuple[int, int]]:
+    """
+    Calculate the list of tile indices that intersect with the given bounding box.
+
+    :param south: Southern latitude boundary
+    :param north: Northern latitude boundary
+    :param west: Western longitude boundary
+    :param east: Eastern longitude boundary
+    :param tile_size: Size of each tile in degrees (default is 1°)
+    :return: List of tuples representing tile indices (min_lat, min_lon)
+    """
+    tiles = []
+    lat_start = int(np.floor(south / tile_size) * tile_size)
+    lat_end = int(np.floor(north / tile_size) * tile_size)
+    lon_start = int(np.floor(west / tile_size) * tile_size)
+    lon_end = int(np.floor(east / tile_size) * tile_size)
+
+    for lat in range(lat_start, lat_end + 1, int(tile_size)):
+        for lon in range(lon_start, lon_end + 1, int(tile_size)):
+            tiles.append((lat, lon))
+    return tiles
+
+def cache_topography_tile(pickle_dir: str, tile: Tuple[int, int], params: Dict[str, Any]) -> rasterio.DatasetReader:
+    """
+    Cache a single topography tile. Download and save it if not already cached.
+
+    :param pickle_dir: Directory where pickle files are stored
+    :param tile: Tuple representing the tile indices (min_lat, min_lon)
+    :param params: Parameters for fetching topography data
+    :return: Rasterio DatasetReader object for the tile
+    """
+    min_lat, min_lon = tile
+    tile_key = f"tile_{min_lat}_{min_lon}.pkl"
+    tile_path = os.path.join(pickle_dir, tile_key)
+
+    if os.path.exists(tile_path):
+        print(f"Loading tile from cache: {tile_key}")
+        with open(tile_path, 'rb') as f:
+            tile_data = pickle.load(f)
+    else:
+        print(f"Fetching new topography data for tile: {tile_key}")
+        # Define the tile-specific bounding box
+        tile_params = params.copy()
+        tile_params["south"] = min_lat
+        tile_params["north"] = min_lat + 1
+        tile_params["west"] = min_lon
+        tile_params["east"] = min_lon + 1
+
+        # Initialize and fetch topography data for the tile
+        topo_data = Topography(**tile_params)
+        topo_data.fetch()  # Download the data
+        tile_data = topo_data.load()  # Load into xarray DataArray
+
+        # Save the tile data to cache
+        with open(tile_path, 'wb') as f:
+            pickle.dump(tile_data, f)
+        print(f"Tile cached as: {tile_path}")
+
+    return tile_data
+
+
 cities_file: str | None = None
+
+
+# Define chunk size and over-extension
+chunk_size = 2.0
+
+def align_down(x: float, base: float = 1.0) -> int:
+    """Aligns the number down to the nearest multiple of base and returns an integer."""
+    return int(math.floor(x / base) * base)
+
+def align_up(x: float, base: float = 1.0) -> int:
+    """Aligns the number up to the nearest multiple of base and returns an integer."""
+    return int(math.ceil(x / base) * base)
+
+def generate_integer_chunks(
+    south: float, north: float, west: float, east: float, chunk_size: float = 2.0
+) -> Dict[str, int]:
+    """
+    Generates non-overlapping chunks aligned to integer boundaries.
+
+    :param south: Southern latitude boundary
+    :param north: Northern latitude boundary
+    :param west: Western longitude boundary
+    :param east: Eastern longitude boundary
+    :param chunk_size: Size of each chunk in degrees (default is 2.0)
+    :yield: Dictionary containing chunk boundaries as integers
+    """
+    # Align overall boundaries to integer degrees
+    aligned_south = align_down(south, base=1.0)
+    aligned_north = align_up(north, base=1.0)
+    aligned_west = align_down(west, base=1.0)
+    aligned_east = align_up(east, base=1.0)
+
+    # Iterate over latitude in steps of chunk_size
+    lat_start = aligned_south
+    while lat_start < aligned_north:
+        chunk_south = lat_start
+        chunk_north = lat_start + chunk_size
+        # Ensure the northern boundary does not exceed the original limit
+        if chunk_north > north:
+            chunk_north = align_up(north, base=1.0)
+        else:
+            chunk_north = int(chunk_north)  # Ensure integer
+
+        # Iterate over longitude in steps of chunk_size
+        lon_start = aligned_west
+        while lon_start < aligned_east:
+            chunk_west = lon_start
+            chunk_east = lon_start + chunk_size
+            # Ensure the eastern boundary does not exceed the original limit
+            if chunk_east > east:
+                chunk_east = align_up(east, base=1.0)
+            else:
+                chunk_east = int(chunk_east)  # Ensure integer
+
+            yield {
+                'south': chunk_south,
+                'north': chunk_north,
+                'west': chunk_west,
+                'east': chunk_east
+            }
+
+            lon_start += chunk_size
+        lat_start += chunk_size
+
 
 
 def plot_interactive_3d(df: pd.DataFrame, identifier: str):
@@ -342,35 +468,41 @@ def plot_interactive_3d(df: pd.DataFrame, identifier: str):
     # Topography generation
     # Topography generation
     # Generate a unique filename based on the bounding box
-    bbox_key = f"{params['south']}_{params['north']}_{params['west']}_{params['east']}"
-    pickle_file = f"topography_{bbox_key}.pkl"
 
-    # Step 1: Cache or load the topography data
-    da = cache_topography_data(pickle_file, params)
+    os.makedirs("topography_cache", exist_ok=True)  # Ensure cache directory exists
 
-    # Step 2: Convert the DataArray to a NumPy array for the topography surface plot
-    elevation_data = da.values.squeeze()
+    fig = go.Figure()
 
-    # Extract latitude and longitude from the DataArray
-    latitudes = da.y.values
-    longitudes = da.x.values
+    for idx, chunk in enumerate(generate_integer_chunks(params['south'], params['north'], params['west'], params['east'], chunk_size), start=1):
+        bbox_key = f"{chunk['south']}_{chunk['north']}_{chunk['west']}_{chunk['east']}"
+        pickle_file = f"topography_cache/{bbox_key}.pkl"
 
-    # Step 3: Downsample the topography data for faster plotting
-    # Adjust the factor based on your performance needs
-    factor = 10  # Using every 5th point for downsampling
-    elevation_data_downsampled = elevation_data[::factor, ::factor]
-    latitudes_downsampled = latitudes[::factor]
-    longitudes_downsampled = longitudes[::factor]
+        # Step 1: Cache or load the topography data
+        da = cache_topography_data(pickle_file, params)
 
-    # Step 4: Create the surface plot for topography
-    fig = go.Figure(data=[go.Surface(
-        z=elevation_data_downsampled,
-        x=longitudes_downsampled,
-        y=latitudes_downsampled,
-        colorscale='Viridis',
-        opacity=0.7,
-        showscale=True
-    )])
+        # Step 2: Convert the DataArray to a NumPy array for the topography surface plot
+        elevation_data = da.values.squeeze()
+
+        # Extract latitude and longitude from the DataArray
+        latitudes = da.y.values
+        longitudes = da.x.values
+
+        # Step 3: Downsample the topography data for faster plotting
+        # Adjust the factor based on your performance needs
+        factor = 10  # Using every 5th point for downsampling
+        elevation_data_downsampled = elevation_data[::factor, ::factor]
+        latitudes_downsampled = latitudes[::factor]
+        longitudes_downsampled = longitudes[::factor]
+
+        fig.add_trace(go.Surface(
+            z=elevation_data_downsampled,
+            x=longitudes_downsampled,
+            y=latitudes_downsampled,
+            colorscale='Viridis',
+            opacity=0.7,
+            showscale=True
+        ))
+
 
     # If cities are able to be loaded, then load cities
     if cities_file:
@@ -401,7 +533,9 @@ def plot_interactive_3d(df: pd.DataFrame, identifier: str):
             name='Populated Places',
             hoverinfo='text',
             hovertext=filtered_gdf['NAME'],
-            text = filtered_gdf['NAME']
+            text = filtered_gdf['NAME'],
+            showlegend=False
+
         ))
 
 

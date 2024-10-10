@@ -32,7 +32,9 @@ lightning_data_folder: str = "lightning_data"
 # LYLOUT_240911_155000_0600.dat <-
 data_extension: str = ".dat"
 
+# The file for finding the cities
 dp.cities_file = "ne_110m_populated_places/ne_110m_populated_places.shp"
+
 
 ######################################################################################################
 # dataParser.py configuration parameters
@@ -62,15 +64,6 @@ dp.process_handling = {
     "P(dBW)": lambda my_str: float(my_str), # Convert to float
     "mask": lambda hex_str: int(hex_str, 16) # Convert the hex-code mask to decimal
 }
-
-######################################################################################################
-# Topography data
-# Can find respective lat and long to use here: https://www.latlong.net/
-######################################################################################################
-dp.params["south"] = 27.458283  # Modify these coordinates for your area of interest (Texas)
-dp.params["north"] = 33.481568
-dp.params["west"] = -101.810989
-dp.params["east"] = -91.924764
 
 ######################################################################################################
 # dataParser.py filter procedure to accept data between ranges, and reject rows that don't accept
@@ -132,6 +125,29 @@ def main():
 
         # Parse the selected file
         data_result: pd.DataFrame = dp.get_dataframe(lightning_data_folder, selected_file)
+
+        lowest_lon = 360
+        largest_lon = -360
+        for longitude in data_result['lon']:
+            if longitude > largest_lon:
+                largest_lon = longitude
+            if longitude < lowest_lon:
+                lowest_lon = longitude
+        
+        dp.params["west"] = lowest_lon - 1
+        dp.params["east"] = largest_lon + 1
+
+        lowest_lat = 360
+        highest_lat = -360
+        for latitude in data_result['lat']:
+            if latitude > highest_lat:
+                highest_lat = latitude
+            if latitude < lowest_lat:
+                lowest_lat = latitude
+
+        dp.params["south"] = lowest_lat - 1
+        dp.params["north"] = highest_lat + 1
+
 
         # Plot 3D scatter
         fig = dp.plot_interactive_3d(data_result, 'mask')
