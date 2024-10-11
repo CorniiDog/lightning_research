@@ -138,13 +138,6 @@ def main():
 
         else:
 
-            with st.spinner('Indexing Topography Data...'):
-                # Plot 3D scatter
-                fig = dp.plot_interactive_3d(data_result, 'mask', do_topography=do_topography_mapping)
-
-            # Display the 3D plot in Streamlit
-            col1.plotly_chart(fig)
-
             # Display the parsed DataFrame
             col2.write("Parsed Data:")
             col2.dataframe(dp.color_df(data_result, 'mask'))
@@ -164,6 +157,14 @@ def main():
                     st.success(f"File '{selected_file}' deleted successfully!")
                 else:
                     st.error(f"Error: Could not delete file '{selected_file}'.")
+
+            # Displaying figure
+            with st.spinner('Indexing Topography Data...'):
+                # Plot 3D scatter
+                fig = dp.plot_interactive_3d(data_result, 'mask', do_topography=do_topography_mapping)
+
+            # Display the 3D plot in Streamlit
+            col1.plotly_chart(fig)
 
 
 ######################################################################################################
