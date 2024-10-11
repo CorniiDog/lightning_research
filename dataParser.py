@@ -309,7 +309,7 @@ def color_df(df: pd.DataFrame, identifier: str) -> pd.DataFrame:
     # Apply the color function to entire rows and return the styled DataFrame
     return df.style.apply(color_row, axis=1)
 
-def cache_topography_data(pickle_file, params):
+def cache_topography_data(pickle_file, params) -> pd.DataFrame:
     # Check if the pickle file already exists
     if os.path.exists(pickle_file):
         print(f"Loading data from cache: {pickle_file}")
@@ -474,6 +474,29 @@ def plot_interactive_3d(df: pd.DataFrame, identifier: str, do_topography=True):
     fig = go.Figure()
 
     if do_topography:
+
+        lowest_lon = None
+        largest_lon = None
+        for longitude in df['lon']:
+            if largest_lon == None or longitude > largest_lon:
+                largest_lon = longitude
+            if lowest_lon == None or longitude < lowest_lon:
+                lowest_lon = longitude
+        
+        params["west"] = lowest_lon - 1
+        params["east"] = largest_lon + 1
+
+        lowest_lat = None
+        highest_lat = None
+        for latitude in df['lat']:
+            if highest_lat == None or latitude > highest_lat:
+                highest_lat = latitude
+            if lowest_lat == None or latitude < lowest_lat:
+                lowest_lat = latitude
+
+        params["south"] = lowest_lat - 1
+        params["north"] = highest_lat + 1
+        
         for idx, chunk in enumerate(generate_integer_chunks(params['south'], params['north'], params['west'], params['east'], chunk_size), start=1):
             bbox_key = f"{chunk['south']}_{chunk['north']}_{chunk['west']}_{chunk['east']}"
             pickle_file = f"topography_cache/{bbox_key}.pkl"
