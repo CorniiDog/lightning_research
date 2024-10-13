@@ -473,7 +473,7 @@ def generate_integer_chunks(
 
 downsampling_factor = 10  # Using every 5th point for downsampling
 
-def plot_interactive_3d(df: pd.DataFrame, identifier: str, do_topography=True):
+def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, do_topography=True):
     """
     Create an interactive 3D scatter plot for latitude, longitude, and altitude, colored by mask.
 
@@ -610,6 +610,17 @@ def plot_interactive_3d(df: pd.DataFrame, identifier: str, do_topography=True):
             name=f'{identifier} {mask_value}',
             showlegend=False
         ))
+
+        # Draw lines between the masks
+        # fig.add_trace(go.Scatter3d(
+        #     x=subset['lon'],
+        #     y=subset['lat'],
+        #     z=subset['alt(m)'],
+        #     mode='lines',
+        #     line=dict(color=color, width=2),
+        #     name=f'{identifier} {mask_value} lines',
+        #     showlegend=False
+        # ))
 
     fig.update_layout(
     scene=dict(

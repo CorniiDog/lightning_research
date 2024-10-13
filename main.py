@@ -165,7 +165,7 @@ def main():
             # Displaying figure
             with st.spinner('Indexing Topography Data...'):
                 # Plot 3D scatter
-                fig = dp.plot_interactive_3d(data_result, 'mask', do_topography=do_topography_mapping)
+                fig = dp.get_interactive_3d_figure(data_result, 'mask', do_topography=do_topography_mapping)
 
             # Display the 3D plot in Streamlit
             col1.plotly_chart(fig)
