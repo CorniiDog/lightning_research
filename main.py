@@ -48,6 +48,10 @@ dp.data_header_startswith = "Data:"
 # *** data *** <- Identifying the start of the data
 dp.data_body_start = "*** data ***"
 
+# i.e. Data start time: 09/11/24 20:40:00
+dp.start_time_indicator = "Data start time:"
+dp.start_time_format = "%m/%d/%y %H:%M:%S"
+
 # Callback functions for processing based on header, for translation
 #
 # Dict[str, Callable[[str], Any]] 

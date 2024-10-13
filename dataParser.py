@@ -89,7 +89,7 @@ filters: List = [
 ```
 """
 
-# i.e. Data start time:
+# i.e. Data start time: 09/11/24 20:40:00
 start_time_indicator = "Data start time:"
 start_time_format = "%m/%d/%y %H:%M:%S"
 
