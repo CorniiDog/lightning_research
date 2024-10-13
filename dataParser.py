@@ -1,13 +1,14 @@
 import pandas as pd
 import os
 import plotly.graph_objects as go
-from datetime import datetime
+from datetime import datetime, timedelta
 import numpy as np
 import colorsys, pickle
 from bmi_topography import Topography
 import geopandas as gpd
 import rasterio
 import fsspec
+from datetime import datetime
 import math
 from typing import (
     Dict,
@@ -88,13 +89,17 @@ filters: List = [
 ```
 """
 
+# i.e. Data start time:
+start_time_indicator = "Data start time:"
+start_time_format = "%m/%d/%y %H:%M:%S"
+
 # i.e. *** data ***
 data_body_start = "*** data ***"
 
 ######################################################################################################
 ## Helper functions below with processing and retreiving a nice-looking DataFrame
 ######################################################################################################
-def parse_file(f, month: int, day: int, year: int) -> pd.DataFrame:
+def parse_file(f) -> pd.DataFrame:
     """
     This processes the entire file and extracts a pandas DataFrame
 
@@ -107,9 +112,18 @@ def parse_file(f, month: int, day: int, year: int) -> pd.DataFrame:
     # Data from the file
     data_headers: list[str] = None
     data_result: pd.DataFrame = None
+    date_start: datetime = None
 
     for line in f:  # Iterate through each line in the file
         line: str  # Hint that line is a string
+
+        if not date_start:
+            if line.startswith(start_time_indicator):
+                potential_date = line.replace(start_time_indicator, "").strip() # Remove the indicator (i.e. "Data start time:")
+                date_time_obj = datetime.strptime(potential_date, start_time_format)
+
+                # Set the time to 00:00:00
+                date_start = date_time_obj.replace(hour=0, minute=0, second=0)
 
         # Extract data headers if not found
         if not data_headers:
@@ -121,7 +135,7 @@ def parse_file(f, month: int, day: int, year: int) -> pd.DataFrame:
         # If headers are found, then we go through
         elif data_result == None:
             if line.strip() == data_body_start:
-                data_result = parse_data(f, data_headers, month, day, year)
+                data_result = parse_data(f, data_headers, date_start)
 
         # Assume fully indented the data and break the for loop
         else:
@@ -130,9 +144,11 @@ def parse_file(f, month: int, day: int, year: int) -> pd.DataFrame:
     return data_result
 
 
+seconds_since_start_of_day_header = "time (UT sec of day)"
+
+
 def parse_data(
-    f, data_headers: list[str], month: int, day: int, year: int
-) -> pd.DataFrame:
+    f, data_headers: list[str], date_start: datetime) -> pd.DataFrame:
     """
     This goes through the remaining of a file and processes the entire data into something a lot easier to use in Python
 
@@ -150,6 +166,7 @@ def parse_data(
     dict_result["year"] = []
     dict_result["month"] = []
     dict_result["day"] = []
+    dict_result["unix"] = []
 
     # Create counter object with initialization of data
     counters = {}
@@ -167,6 +184,7 @@ def parse_data(
         line: str  # Hint that line is a string
 
         data_row = line.split()  # Splits the line into designated sections
+        respective_time = date_start
 
         # Process and format from string to respectable type
         allow_pass = True
@@ -178,6 +196,8 @@ def parse_data(
                 data_cell = process_handling[data_headers[i]](
                     data_cell
                 )  # Process the data and parse it to designated format
+
+                # Add seconds if the cell is respective
 
             # Increment counter for the designated header (this is for counter filtering)
             if data_headers[i] in counters.keys():
@@ -196,8 +216,11 @@ def parse_data(
             if not allow_pass:
                 break
 
-
             data_row[i] = data_cell
+
+            if data_cell and data_headers[i] == seconds_since_start_of_day_header:
+                    print("The data cell is:", data_cell)
+                    respective_time += timedelta(seconds=data_cell)
 
         # Skip the line and do not allow parsing if the allow_pass is false
         if not allow_pass:
@@ -209,9 +232,11 @@ def parse_data(
                 data_row[i]
             )  # Add data cell to the designated region
 
-        dict_result["month"].append(month)
-        dict_result["day"].append(day)
-        dict_result["year"].append(year)
+
+        dict_result["month"].append(respective_time.month)
+        dict_result["day"].append(respective_time.day)
+        dict_result["year"].append(respective_time.year)
+        dict_result["unix"].append(respective_time.timestamp())
 
     df = pd.DataFrame(dict_result) # Create dataframe
 
@@ -262,22 +287,11 @@ def get_dataframe(lightning_data_folder: str, file_name: str) -> pd.DataFrame | 
     """
     Helper function for getting a pandas DataFrame from a .dat file
     """
-    # Example: file_name = "LYLOUT_240911_155000_0600.dat"
-    # Creating datetime of the file name using datetime object
-    date_str = file_name[7:13]  # "240911" -> Sept 11, 2024
-    time_str = file_name[14:20]  # "155000" -> 15:50:00
-    dt_str = f"20{date_str} {time_str}"  # Adds "20" to the year to make it "2024"
-    dt_format = "%Y%m%d %H%M%S"  # Formatting for it
-    dt = datetime.strptime(dt_str, dt_format)
-
-    # Obtain the file path relative to project directory to open
-    file_path = os.path.join(lightning_data_folder, file_name)
 
     # Parse through data and retreive the Pandas DataFrame
-    data_result: pd.DataFrame = None
-    with open(file_path, "r") as f:
-        data_result = parse_file(f, dt.month, dt.day, dt.year)
-    return data_result
+    with open(os.path.join(lightning_data_folder, file_name), "r") as f:
+        return parse_file(f)
+    return None
 
 
 def generate_colors(num_colors):
@@ -366,7 +380,7 @@ def cache_topography_tile(pickle_dir: str, tile: Tuple[int, int], params: Dict[s
     if os.path.exists(tile_path):
         print(f"Loading tile from cache: {tile_key}")
         with open(tile_path, 'rb') as f:
-            tile_data = pickle.load(f)
+            tile_data: rasterio.DatasetReader = pickle.load(f)
     else:
         print(f"Fetching new topography data for tile: {tile_key}")
         # Define the tile-specific bounding box
