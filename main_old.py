@@ -52,11 +52,6 @@ dp.data_body_start = "*** data ***"
 dp.start_time_indicator = "Data start time:"
 dp.start_time_format = "%m/%d/%y %H:%M:%S"
 
-# Configuring latitude, longitude, and altitude
-dp.latitude_header = 'lat'
-dp.longitude_header = 'lon'
-dp.altitude_meters_header = 'alt(m)'
-
 # Callback functions for processing based on header, for translation
 #
 # Dict[str, Callable[[str], Any]] 
@@ -115,15 +110,82 @@ dp.count_required = [
 ######################################################################################################
 def main():
     st.title("Lightning Data Parser")
+
+    # Section: File Upload
+    st.header("Upload a `.dat` file")
+    uploaded_file = st.file_uploader("", type="dat")
+    
+    if uploaded_file is not None:
+        save_path = save_uploaded_file(uploaded_file)
+        st.success(f"File '{uploaded_file.name}' uploaded successfully!")
+
+    st.divider()
+
+    # Section: File Management
+    st.header("Manage `.dat` files")
     
     # Get list of .dat files
     dat_files = [f for f in os.listdir(lightning_data_folder) if f.endswith(data_extension)]
-
-    for file in dat_files:
-        data_result: pd.DataFrame = dp.get_dataframe(lightning_data_folder, file)
-
-
     
+    # Streamlit file selector
+    selected_file = st.selectbox("Select a data file:", dat_files)
+    
+    if selected_file:
+
+        col1, col2 = st.columns(2)
+
+        # Parse the selected file
+        data_result: pd.DataFrame = dp.get_dataframe(lightning_data_folder, selected_file)
+
+        if len(data_result['mask']) == 0:
+            st.write("No data matching the parameters")
+
+        else:
+
+            # Display the parsed DataFrame
+            col2.write("Parsed Data:")
+            col2.dataframe(dp.color_df(data_result, 'mask'))
+            
+            # Option to download the DataFrame as a CSV
+            csv_output = data_result.to_csv(index=False)
+            st.download_button(
+                label="Download CSV",
+                data=csv_output,
+                file_name=f"{os.path.splitext(selected_file)[0]}.csv",
+                mime="text/csv"
+            )
+
+            # Option to delete the selected file
+            if st.button(f"Delete {selected_file}"):
+                if delete_file(selected_file):
+                    st.success(f"File '{selected_file}' deleted successfully!")
+                else:
+                    st.error(f"Error: Could not delete file '{selected_file}'.")
+
+            # Displaying figure
+            with st.spinner('Indexing Topography Data...'):
+                # Plot 3D scatter
+                fig = dp.get_interactive_3d_figure(data_result, 'mask', do_topography=do_topography_mapping)
+
+            # Display the 3D plot in Streamlit
+            col1.plotly_chart(fig)
+
+
+######################################################################################################
+# Helper functions for file management
+######################################################################################################
+def save_uploaded_file(uploaded_file):
+    file_path = os.path.join(lightning_data_folder, uploaded_file.name)
+    with open(file_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+    return file_path
+
+def delete_file(file_name):
+    file_path = os.path.join(lightning_data_folder, file_name)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+        return True
+    return False
         
 if __name__ == "__main__":
     main()

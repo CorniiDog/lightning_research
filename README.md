@@ -9,7 +9,7 @@ Prequisites:
 ```
 sudo apt install gzip 
 
-pip install gdown pandas PyQt5 matplotlib plotly streamlit bmi-topography geopandas fsspec requests aiohttp
+pip install gdown pandas PyQt5 matplotlib plotly streamlit bmi-topography geopandas fsspec requests aiohttp pyproj
 ```
 
 Then, you need to get an OpenTopography API key here: https://opentopography.org/

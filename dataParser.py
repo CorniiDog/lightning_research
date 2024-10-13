@@ -9,6 +9,7 @@ import geopandas as gpd
 import rasterio
 import fsspec
 from datetime import datetime
+from pyproj import Proj, transform
 import math
 from typing import (
     Dict,
@@ -18,6 +19,11 @@ from typing import (
     List,
 )  # For explicit types to rigid-ify the coding process
 
+# Define the WGS84 geographic coordinate system (latitude, longitude, altitude)
+geodetic = Proj(proj="latlong", datum="WGS84")
+
+# Define the ECEF (Earth-Centered, Earth-Fixed) geocentric coordinate system
+ecef = Proj(proj="geocent", datum="WGS84", ellps="WGS84")
 
 params = Topography.DEFAULT.copy()
 params["south"] = 25.84  # Modify these coordinates for your area of interest (Texas)
@@ -152,6 +158,10 @@ def parse_file(f) -> pd.DataFrame:
 seconds_since_start_of_day_header = "time (UT sec of day)"
 
 
+latitude_header = 'lat'
+longitude_header = 'lon'
+altitude_meters_header = 'alt(m)'
+
 def parse_data(
     f, data_headers: list[str], date_start: datetime) -> pd.DataFrame:
     """
@@ -171,6 +181,10 @@ def parse_data(
     dict_result["day"] = []
     dict_result["unix"] = []
 
+    dict_result['x(km)'] = []
+    dict_result['y(km)'] = []
+    dict_result['z(km)'] = []
+
     # Create counter object with initialization of data
     counters = {}
     for arr in count_required:
@@ -189,29 +203,33 @@ def parse_data(
         data_row = line.split()  # Splits the line into designated sections
         respective_time = date_start
 
+        lat, lon, alt = None, None, None
+
         # Process and format from string to respectable type
         allow_pass = True
         for i in range(len(data_row)):
             data_cell = data_row[i]
 
+            header = data_headers[i]
+
             # Format to respectable string
-            if data_headers[i] in process_handling.keys():
-                data_cell = process_handling[data_headers[i]](
+            if header in process_handling.keys():
+                data_cell = process_handling[header](
                     data_cell
                 )  # Process the data and parse it to designated format
 
                 # Add seconds if the cell is respective
 
             # Increment counter for the designated header (this is for counter filtering)
-            if data_headers[i] in counters.keys():
-                if not data_cell in counters[data_headers[i]].keys():
-                    counters[data_headers[i]][data_cell] = 0
+            if header in counters.keys():
+                if not data_cell in counters[header].keys():
+                    counters[header][data_cell] = 0
                 
-                counters[data_headers[i]][data_cell] += 1
+                counters[header][data_cell] += 1
 
             # Ensure that it's within filters rules. If it's not then prevent padding and break
             for j in range(len(filters)):
-                if filters[j][0] == data_headers[i] and not filters[j][1](data_cell): # If the header name is the same (0 index)
+                if filters[j][0] == header and not filters[j][1](data_cell): # If the header name is the same (0 index)
                     allow_pass = False #Use as flag for allow_pass
                     break
 
@@ -221,9 +239,16 @@ def parse_data(
 
             data_row[i] = data_cell
 
-            if data_cell and data_headers[i] == seconds_since_start_of_day_header:
-                    print("The data cell is:", data_cell)
+            if data_cell:
+                if header == seconds_since_start_of_day_header:
                     respective_time += timedelta(seconds=data_cell)
+                elif header == latitude_header:
+                    lat = data_cell
+                elif header == longitude_header:
+                    lon = data_cell
+                elif header == altitude_meters_header:
+                    alt = data_cell
+
 
         # Skip the line and do not allow parsing if the allow_pass is false
         if not allow_pass:
@@ -235,11 +260,21 @@ def parse_data(
                 data_row[i]
             )  # Add data cell to the designated region
 
+        x, y, z = 0.0, 0.0, 0.0
+        if lat and lon and alt:
+            x, y, z = transform(geodetic, ecef, lon, lat, alt)
+            x /= 1000.0
+            y /= 1000.0
+            z /= 1000.0
+
 
         dict_result["month"].append(respective_time.month)
         dict_result["day"].append(respective_time.day)
         dict_result["year"].append(respective_time.year)
         dict_result["unix"].append(respective_time.timestamp())
+        dict_result["x(km)"].append(x)
+        dict_result["y(km)"].append(y)
+        dict_result["z(km)"].append(z)
 
     df = pd.DataFrame(dict_result) # Create dataframe
 
