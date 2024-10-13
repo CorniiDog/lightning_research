@@ -9,7 +9,7 @@ import geopandas as gpd
 import rasterio
 import fsspec
 from datetime import datetime
-from pyproj import Proj, transform
+from pyproj import Transformer
 import math
 from typing import (
     Dict,
@@ -19,11 +19,7 @@ from typing import (
     List,
 )  # For explicit types to rigid-ify the coding process
 
-# Define the WGS84 geographic coordinate system (latitude, longitude, altitude)
-geodetic = Proj(proj="latlong", datum="WGS84")
-
-# Define the ECEF (Earth-Centered, Earth-Fixed) geocentric coordinate system
-ecef = Proj(proj="geocent", datum="WGS84", ellps="WGS84")
+transformer_to_ecef = Transformer.from_crs("EPSG:4326", "EPSG:4978")
 
 params = Topography.DEFAULT.copy()
 params["south"] = 25.84  # Modify these coordinates for your area of interest (Texas)
@@ -262,7 +258,7 @@ def parse_data(
 
         x, y, z = 0.0, 0.0, 0.0
         if lat and lon and alt:
-            x, y, z = transform(geodetic, ecef, lon, lat, alt)
+            x, y, z = transformer_to_ecef.transform(lat, lon, alt)
             x /= 1000.0
             y /= 1000.0
             z /= 1000.0

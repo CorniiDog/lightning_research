@@ -62,4 +62,12 @@ gunzip *.gz
 - Populated places (names with latitude and longitude of cities) provided by Natural Earth: https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-populated-places/
 - Lightning data provided by Timothy Logan, Director of the Houston Lightning Mapping Array (HLMA) Network: https://artsci.tamu.edu/atmos-science/contact/profiles/timothy-logan.html
 
+## My process
 
+My process:
+
+1. I convert the latitude, longitude, and altitude to x, y, and z from the center of the earth as a double-based float. This means that the data precision will be within +-0.1 meters, however the decimals are preserved for computational consistency to avoid as much dropoff as possible, using a powerful library PyProj:
+
+https://pyproj4.github.io/pyproj/stable/
+
+2.
