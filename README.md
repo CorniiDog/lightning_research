@@ -47,7 +47,7 @@ gdown https://drive.google.com/uc?id=1EkYPqY0OmG5RBZH31Gb02hzey3c1Vxsx
 unzip "TLE WWLLN Data Zipped Sep272024.zip"
 ```
 
-4. Next, to unzip all of the `.dat.gz` files (inside of lightning_data folder) to turn to simply `.dat`:
+4. Next, to unzip all of the `.dat.gz` files (inside of lightning_data folder) to turn to simply `.dat` via the following command:
 
 ```
 gunzip *.gz

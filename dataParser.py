@@ -39,7 +39,15 @@ count_required = [
 ```
 """
 
-process_handling: Dict[str, Callable[[str], Any]] = {}
+process_handling: Dict[str, Callable[[str], Any]] = {
+    "time (UT sec of day)": lambda my_str: float(my_str),  # Convert to float
+    "lat": lambda my_str: float(my_str),  # Convert to float
+    "lon": lambda my_str: float(my_str),  # Convert to float
+    "alt(m)": lambda my_str: float(my_str),  # Convert to float
+    "reduced chi^2": lambda my_str: float(my_str),  # Convert to float
+    "P(dBW)": lambda my_str: float(my_str), # Convert to float
+    "mask": lambda hex_str: int(hex_str, 16) # Convert the hex-code mask to decimal
+}
 """
 Callback functions for processing based on header, for translation\n
 
@@ -104,9 +112,6 @@ def parse_file(f) -> pd.DataFrame:
     This processes the entire file and extracts a pandas DataFrame
 
     :param f: The file object to read from
-    :param month: An integer [1-12] representing the month
-    :param day: An integer [1-31] representing the day
-    :param year: An integer [1-9999] representing the year
     :return pd.DataFrame: A pandas dataframe resembling the data
     """
     # Data from the file
@@ -154,9 +159,7 @@ def parse_data(
 
     :param f: The file, at the immediate point of data begin
     :param data_headers: The headers to compile to
-    :param month: An integer [1-12] representing the month
-    :param day: An integer [1-31] representing the day
-    :param year: An integer [1-9999] representing the year
+    :param date_start: The date of the start of data parsing
     :return pd.DataFrame: A pandas dataframe resembling the data
     """
 
