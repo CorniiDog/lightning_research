@@ -1,6 +1,7 @@
 import os
 import pandas as pd
 import dataParser as dp # dataParser.py
+import dataLogger as dl # dataLogger
 import streamlit as st
 
 st.set_page_config(
@@ -81,7 +82,6 @@ def main():
     print("Processing file cache")
     for file in dat_files:
         data_result: pd.DataFrame = dp.get_dataframe(lightning_data_folder, file)
-        dp.cache_dataframe(data_result)
 
     print("Establishing timelines")
     

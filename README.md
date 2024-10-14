@@ -9,7 +9,7 @@ Prequisites:
 ```
 sudo apt install gzip 
 
-pip install gdown pandas PyQt5 matplotlib plotly streamlit bmi-topography geopandas fsspec requests aiohttp pyproj streamlit-vis-timeline
+pip install gdown pandas PyQt5 matplotlib plotly streamlit bmi-topography geopandas fsspec requests aiohttp pyproj streamlit-vis-timeline streamlit-chunk-file-uploader
 ```
 
 Then, you need to get an OpenTopography API key here: https://opentopography.org/
@@ -71,3 +71,10 @@ My process:
 https://pyproj4.github.io/pyproj/stable/
 
 2.
+
+
+## Misc details:
+
+Chunk file loader details: https://discuss.streamlit.io/t/new-component-chunk-file-uploader-break-through-the-upload-size-limit/61117
+
+Streamlit vis timeline details: https://discuss.streamlit.io/t/new-component-streamlit-timeline-creating-beautiful-timelines-with-bi-directional-communication/31804
