@@ -1,11 +1,7 @@
 import os
-  # Pands for csv creation and output
- # For 3D plotting
-import dataParser as dp
- # Streamlit
-  # For explicit types to rigid-ify the coding process
+import pandas as pd
+import dataParser as dp # dataParser.py
 import streamlit as st
- # dataParser.py
 
 st.set_page_config(
     page_title=None, page_icon=None, layout="wide", initial_sidebar_state="auto", menu_items=None
@@ -61,8 +57,6 @@ dp.downsampling_factor = st.sidebar.slider(
     "Topography Downsampling (Size Reduction) Factor", 1, 100, 20
 )
 
-
-
 # Update the dp.filters and dp.count_required dynamically
 dp.filters = [
     ["reduced chi^2", lambda chi: chi >= chi_min],
@@ -83,10 +77,16 @@ def main():
     # Get list of .dat files
     dat_files = [f for f in os.listdir(lightning_data_folder) if f.endswith(data_extension)]
 
+    # Cache files for processing the month
+    print("Processing file cache")
     for file in dat_files:
-        dp.get_dataframe(lightning_data_folder, file)
+        data_result: pd.DataFrame = dp.get_dataframe(lightning_data_folder, file)
+        dp.cache_dataframe(data_result)
 
-        print("Hello world")
+    print("Establishing timelines")
+    
+
+
 
 if __name__ == "__main__":
     main()

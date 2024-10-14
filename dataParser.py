@@ -1,7 +1,7 @@
 import pandas as pd
 import os
 import plotly.graph_objects as go
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import numpy as np
 import colorsys, pickle
 from bmi_topography import Topography
@@ -678,3 +678,113 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, do_topography=T
     )
 
     return fig
+
+
+lightning_data_cache_folder  = "lightning_data_cache_folder"
+
+def cache_dataframe(df: pd.DataFrame | None) -> None:
+    os.makedirs(lightning_data_cache_folder, exist_ok=True)  # Ensure cache directory exists
+
+    months_involved = []
+    for unix_time in df['unix']:
+        # Add months to months involved
+        dt = datetime.fromtimestamp(unix_time, tz=timezone.utc)
+        months_involved.append(dt.strftime('%Y-%m'))
+    
+    # Remove duplicates
+    months_involved = list(set(months_involved))
+
+    # Process each month
+    for month in months_involved:
+        pickle_path = os.path.join(lightning_data_cache_folder, f"{month}.pkl")
+        if os.path.exists(pickle_path):
+            # Load existing data
+            existing_df: pd.DataFrame = pd.read_pickle(pickle_path)
+            
+            existing_df = existing_df.sort_values(by='unix', ascending=True, na_position='first')
+
+            # Filter new data for the month
+            new_df = df[df['unix'].apply(lambda x: datetime.fromtimestamp(x, tz=timezone.utc).strftime('%Y-%m') == month)]
+            # Concatenate and remove duplicates
+            combined_df = pd.concat([existing_df, new_df]).drop_duplicates(subset=['unix', 'x(km)', 'y(km)', 'z(km)', 'mask'])
+            # Save back if there are new entries
+            if len(combined_df) > len(existing_df):
+                combined_df.to_pickle(pickle_path)
+                print(f"Updated cache for {month}.")
+        else:
+            # Save new data for the month
+            new_df = df[df['unix'].apply(lambda x: datetime.fromtimestamp(x, tz=timezone.utc).strftime('%Y-%m') == month)]
+            new_df.to_pickle(pickle_path)
+            print(f"Cached new data for {month}.")
+
+
+def get_hour_of_time(dt: datetime) -> pd.DataFrame | None:
+    os.makedirs(lightning_data_cache_folder, exist_ok=True)  # Ensure cache directory exists
+
+    month_str = dt.strftime('%Y-%m')
+    pickle_path = os.path.join(lightning_data_cache_folder, f"{month_str}.pkl")
+    if os.path.exists(pickle_path):
+        df = pd.read_pickle(pickle_path)
+        # Filter by hour
+        hour_df = df[df['unix'].apply(lambda x: datetime.fromtimestamp(x, tz=timezone.utc).hour == dt.hour)]
+        return hour_df
+    else:
+        print(f"No cache found for month: {month_str}")
+        return None
+
+
+def get_day_of_time(dt: datetime) -> pd.DataFrame | None:
+    os.makedirs(lightning_data_cache_folder, exist_ok=True)  # Ensure cache directory exists
+
+    month_str = dt.strftime('%Y-%m')
+    pickle_path = os.path.join(lightning_data_cache_folder, f"{month_str}.pkl")
+    if os.path.exists(pickle_path):
+        df = pd.read_pickle(pickle_path)
+        # Filter by day
+        day_df = df[df['unix'].apply(lambda x: datetime.fromtimestamp(x, tz=timezone.utc).day == dt.day and
+                                               datetime.fromtimestamp(x, tz=timezone.utc).month == dt.month and
+                                               datetime.fromtimestamp(x, tz=timezone.utc).year == dt.year)]
+        return day_df
+    else:
+        print(f"No cache found for month: {month_str}")
+        return None
+
+
+def get_week_of_time(dt: datetime) -> pd.DataFrame | None:
+    os.makedirs(lightning_data_cache_folder, exist_ok=True)  # Ensure cache directory exists
+
+    # Determine the week number
+    week_num = dt.isocalendar()[1]
+    year = dt.year
+
+    # Load all months in the year
+    all_pkl_files = [f for f in os.listdir(lightning_data_cache_folder) if f.startswith(f"{year}-")]
+    df_list = []
+    for pkl_file in all_pkl_files:
+        pickle_path = os.path.join(lightning_data_cache_folder, pkl_file)
+        df = pd.read_pickle(pickle_path)
+        df_list.append(df)
+    if df_list:
+        combined_df = pd.concat(df_list)
+        # Filter by week number
+        week_df = combined_df[combined_df['unix'].apply(lambda x: datetime.fromtimestamp(x, tz=timezone.utc).isocalendar()[1] == week_num and
+                                                            datetime.fromtimestamp(x, tz=timezone.utc).year == year)]
+        return week_df
+    else:
+        print(f"No cache found for year: {year}")
+        return None
+
+
+def get_month_of_time(dt: datetime) -> pd.DataFrame | None:
+    os.makedirs(lightning_data_cache_folder, exist_ok=True)  # Ensure cache directory exists
+
+    month_str = dt.strftime('%Y-%m')
+    pickle_path = os.path.join(lightning_data_cache_folder, f"{month_str}.pkl")
+    if os.path.exists(pickle_path):
+        df = pd.read_pickle(pickle_path)
+        return df
+    else:
+        print(f"No cache found for month: {month_str}")
+        return None
+    
+

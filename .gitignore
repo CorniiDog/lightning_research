@@ -1,3 +1,4 @@
 /.conda
 /lightning_data/*
 /topography_cache
+/lightning_data_cache_folder
