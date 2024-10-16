@@ -3,6 +3,15 @@ import pandas as pd
 import dataParser as dp # dataParser.py
 import streamlit as st
 import numpy as np
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+from typing import (
+    Dict,
+    Callable,
+    Any,
+    Tuple,
+    List,
+)  # For explicit types to rigid-ify the coding process
 
 st.set_page_config(
     page_title=None, page_icon=None, layout="wide", initial_sidebar_state="auto", menu_items=None
@@ -47,6 +56,14 @@ dp.process_handling = {
 # Sliders for filter parameters
 st.sidebar.header("Filter Settings")
 
+now: datetime = datetime.now()
+
+start_date = st.sidebar.date_input("Start Date", now - relativedelta(months=1))
+dp.start_datetime = datetime(start_date.year, start_date.month, start_date.day)
+
+end_date = st.sidebar.date_input("End Date", now)
+dp.end_datetime = datetime(end_date.year, end_date.month, end_date.day)
+
 chi_min: int = st.sidebar.number_input("Reduced chi^2 min", 0, 100, 0)
 chi_max: int = st.sidebar.number_input("Reduced chi^2 max", 0, 1000, 50)
 km_min: int = st.sidebar.number_input("Altitude min (km)", 0, 100, 0)
@@ -79,29 +96,39 @@ dp.count_required = [["mask", lambda count: count >= mask_count_min]]
 def main():
     st.title("Lightning Data Parser")
 
+    lightning_strikes: List[pd.DataFrame] = []
+    strike_times: List[Tuple[str, str]] = []
+
     # Get list of .dat files
     dat_files = [f for f in os.listdir(lightning_data_folder) if f.endswith(data_extension)]
-
+    
     # Cache files for processing the month
     for file in dat_files:
-        with st.spinner(f"Retreiving data for {file}"):
+        with st.spinner(f"Retreiving data for `{file}`"):
             data_result: pd.DataFrame = dp.get_dataframe(lightning_data_folder, file)
 
-        with st.spinner(f"Parsing lightning strikes for {file}"):
-            lightning_strikes = dp.get_strikes(data_result)
+        with st.spinner(f"Parsing lightning data for `{file}`"):
+            sub_strikes, substrike_times = dp.get_strikes(data_result)
+            lightning_strikes += sub_strikes # Concatenate to lightning_strikes
+            strike_times += substrike_times
 
-        for strike in lightning_strikes:
-            print(strike)
+    with st.spinner(f"Establishing timeline"):
+        items = []
+        for i in range(len(lightning_strikes)):
+            data_dict = {
+                "id": i+1,
+                "content": lightning_strikes[i]['mask'][0],
+                "start": strike_times[i][0]
+            }
+            items.append(data_dict)
+            if i > 10:
+                break
+    
+    from streamlit_timeline import st_timeline
+    timeline = st_timeline(items, groups=[], options={}, height="300px")
 
-
-
-
-
-
-            
-
-    with st.spinner("Establishing timelines"):
-        print("Hello world")
+    st.subheader("Selected item:")
+    st.write(timeline)
 
 
 if __name__ == "__main__":

@@ -7,8 +7,6 @@ import colorsys, pickle
 from bmi_topography import Topography
 import geopandas as gpd
 import rasterio
-import fsspec
-from datetime import datetime
 from pyproj import Transformer
 import math
 from typing import (
@@ -208,6 +206,16 @@ The header for altitude
 Default: `alt(m)`
 """
 
+start_datetime: datetime = None
+"""
+The start date window, as a datetime, for calculations
+"""
+
+end_datetime: datetime = None
+"""
+The end date window, as a datetime, for calculations
+"""
+
 def parse_data(
     f, data_headers: list[str], date_start: datetime) -> pd.DataFrame:
     """
@@ -248,6 +256,14 @@ def parse_data(
 
         data_row = line.split()  # Splits the line into designated sections
         respective_time = date_start
+        
+        # If start_date is established and that the respective time is before the start date, then skip
+        if start_datetime and respective_time < start_datetime:
+            continue
+        
+        # If end_date is established and that the respective time is after the end date, then skip
+        if end_datetime and respective_time > end_datetime:
+            continue
 
         lat, lon, alt = None, None, None
 
@@ -309,7 +325,7 @@ def parse_data(
         x, y, z = 0.0, 0.0, 0.0
         if lat and lon and alt:
             x, y, z = transformer_to_ecef.transform(lat, lon, alt)
-
+        
 
         dict_result["month"].append(respective_time.month)
         dict_result["day"].append(respective_time.day)
@@ -776,7 +792,10 @@ min_points_for_lightning = 2
 The minimum number of points required for a lightning strike identification
 """
 
-def get_strikes(df: pd.DataFrame) -> List[pd.DataFrame]:
+def get_strikes(df: pd.DataFrame) -> Tuple[List[pd.DataFrame], List[Tuple[str, str]]]:
+    """
+    
+    """
     lightning_strikes: List[pd.DataFrame] = []
     strike_times: List[Tuple[float, float]] = []  # List of (min_time, max_time) for each strike
 
@@ -794,7 +813,7 @@ def get_strikes(df: pd.DataFrame) -> List[pd.DataFrame]:
             x1 = row['x(m)'].values[0]
             y1 = row['y(m)'].values[0]
             z1 = row['z(m)'].values[0]
-            time1 = row[seconds_since_start_of_day_header].values[0]
+            time1 = row['unix'].values[0]
 
             data_found = False  # Flag to check if row is added to an existing strike
 
@@ -809,12 +828,14 @@ def get_strikes(df: pd.DataFrame) -> List[pd.DataFrame]:
 
                 # Iterate over rows in the existing strike DataFrame
                 for k, other_row in lightning_strikes[j].iterrows():
-                    time2 = other_row[seconds_since_start_of_day_header]
+                    time2 = other_row['unix']
                     delta_t = time1 - time2
 
                     # If times are grossly different, skip
                     if np.abs(delta_t) > lightning_max_strike_time:
                         continue
+
+                    
 
                     x2 = other_row['x(m)']
                     y2 = other_row['y(m)']
@@ -846,6 +867,15 @@ def get_strikes(df: pd.DataFrame) -> List[pd.DataFrame]:
                 strike_times.append((time1, time1))  # Initialize min and max time with time1
 
     # Filter out strikes with fewer rows than min_points_for_lightning
-    filtered_strikes = [strike for strike in lightning_strikes if len(strike) >= min_points_for_lightning]
+    filtered_strikes = []
+    filtered_strike_times = []
+    for i, strike in enumerate(lightning_strikes):
+        if len(strike) >= min_points_for_lightning:
+            filtered_strikes.append(strike)
+            # Convert Unix timestamps to ISO formatted datetime strings
+            min_time_unix, max_time_unix = strike_times[i]
+            min_time_str = datetime.fromtimestamp(min_time_unix, tz=timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
+            max_time_str = datetime.fromtimestamp(max_time_unix, tz=timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
+            filtered_strike_times.append((min_time_str, max_time_str))
 
-    return filtered_strikes
+    return filtered_strikes, filtered_strike_times
