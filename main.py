@@ -47,14 +47,18 @@ dp.process_handling = {
 # Sliders for filter parameters
 st.sidebar.header("Filter Settings (`-1` = disable)")
 
-chi_min: int = st.sidebar.slider("Reduced chi^2 min", 0, 100, 0)
-chi_max: int = st.sidebar.slider("Reduced chi^2 max", -1, 1000, 50)
-km_min: int = st.sidebar.slider("Altitude (km) min", 0, 100, 0)
-km_max: int = st.sidebar.slider("Altitude (km) max", -1, 200, 200)
+chi_min: int = st.sidebar.number_input("Reduced chi^2 min", 0, 100, 0)
+chi_max: int = st.sidebar.number_input("Reduced chi^2 max", -1, 1000, 50)
+km_min: int = st.sidebar.number_input("Altitude (km) min", 0, 100, 0)
+km_max: int = st.sidebar.number_input("Altitude (km) max", -1, 200, 200)
 mask_count_min: int = st.sidebar.slider("Mask minimum occurances", 1, 10, 2)
+dp.lightning_max_strike_time = st.sidebar.number_input("Lightning maximum allowed strike time (s)", 0.0, 2.0, 0.15)
+dp.lightning_max_strike_distance = st.sidebar.number_input("Lightning maximum allowed strike distance (km)", 0.0, 100.0, 3.0) * 1000.0
+dp.lightning_minimum_speed = st.sidebar.number_input("Lightning minimum allowed speed (m/s)", 0.0, 299792458.0, 299792.458)
+dp.min_points_for_lightning = mask_count_min
 
 do_topography_mapping: int = st.sidebar.checkbox(label="Enable Topography", value=False)
-dp.downsampling_factor = st.sidebar.slider(
+dp.downsampling_factor = st.sidebar.number_input(
     "Topography Downsampling (Size Reduction) Factor", 1, 100, 20
 )
 
@@ -79,45 +83,15 @@ def main():
     dat_files = [f for f in os.listdir(lightning_data_folder) if f.endswith(data_extension)]
 
     # Cache files for processing the month
-    with st.spinner("Parsing data files"):
-        for file in dat_files:
+    for file in dat_files:
+        with st.spinner(f"Retreiving data for {file}"):
             data_result: pd.DataFrame = dp.get_dataframe(lightning_data_folder, file)
 
-            # Assuming 'mask' is the name of the column containing the mask values in your DataFrame
-            unique_masks = data_result['mask'].unique()
+        with st.spinner(f"Parsing lightning strikes for {file}"):
+            lightning_strikes = dp.get_strikes(data_result)
 
-            # Iterate through each unique mask value
-            for mask_value in unique_masks:
-                # Filter the DataFrame to get only rows with the current mask value
-                mask_subset = data_result[data_result['mask'] == mask_value]
-
-                print(file, mask_subset)
-                
-                for i in range(len(mask_subset)):
-                    for j in range(i + 1, len(mask_subset)):
-                        row1 = mask_subset.iloc[i]
-                        r1x, r1y, r1z = row1['x(m)'], row1['y(m)'], row1['z(m)']
-                        t1 = row1['time (UT sec of day)']
-
-                        row2 = mask_subset.iloc[j]
-                        r2x, r2y, r2z = row2['x(m)'], row2['y(m)'], row2['z(m)']
-                        t2 = row2['time (UT sec of day)'] # seconds
-
-                        dist = np.sqrt(np.pow(r1x-r2x, 2) + np.pow(r1y-r2y, 2) + np.pow(r1z-r2z, 2))
-                        delta_t = t1 - t2
-                        potential_speed = np.abs(dist/delta_t)
-
-                        speed_of_light = 299792458 # m/s
-
-                        # margin = 0.001
-                        # if potential_speed > speed_of_light * margin and potential_speed < speed_of_light:
-                        #     print(potential_speed, row1['mask'])
-
-                        # Run file
-                        # See the mask is 3e28 with 3802 rows in LYLOUT_240911_184000_0600_Exported.dat
-                        # The mask is spanned by around a 10 minute gap
-                break
-                    
+        for strike in lightning_strikes:
+            print(strike)
 
 
 

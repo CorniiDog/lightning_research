@@ -21,8 +21,10 @@ from typing import (
 
 transformer_to_ecef = Transformer.from_crs("EPSG:4326", "EPSG:4978")
 """
-Z-axis is aligned with the Earth's rotation axis, meaning it points through the North and South Poles.\n
-X-axis points from the center of the Earth to the intersection of the Equator and the Prime Meridian (0° longitude).\n
+Z-axis is aligned with the Earth's rotation axis, meaning it points through the North and South Poles.
+
+X-axis points from the center of the Earth to the intersection of the Equator and the Prime Meridian (0° longitude).
+
 Y-axis points from the center of the Earth to the intersection of the Equator and 90° East longitude.
 """
 
@@ -36,10 +38,14 @@ params["east"] = -93.51
 # Essential functions to use
 count_required = []
 """
-This determines count instances rule.\n
-That is, if you provide a header, you provide a function for the count of items.\n
-For example, for `1 >= n >= 2` that requires instances to be between `1` and `2` occurances.\n
-Example:\n
+This determines count instances rule.
+
+That is, if you provide a header, you provide a function for the count of items.
+
+For example, for `1 >= n >= 2` that requires instances to be between `1` and `2` occurances.
+
+Example:
+
 ```
 count_required = [
     ["mask", mask_count_rule]
@@ -57,14 +63,16 @@ process_handling: Dict[str, Callable[[str], Any]] = {
     "mask": lambda hex_str: int(hex_str, 16) # Convert the hex-code mask to decimal
 }
 """
-Callback functions for processing based on header, for translation\n
+Callback functions for processing based on header, for translation
 
-Dict[str, Callable[[str], Any]] \n
+Dict[str, Callable[[str], Any]] 
+
 Basically means we are explicitly defining a dictionary named `process_handling`
 with the key being a string `str`, and the value being a Callable object 
 `Callable[[str], Any]` (basically a function). The callable function must have the 
 parameter be a string but the return value can be anything.
-Example:\n
+
+Example:
 
 ```
 process_handling: Dict[str, Callable[[str], Any]] = {
@@ -113,14 +121,16 @@ The text that indicates the start time of the data
 
 start_time_format = "%m/%d/%y %H:%M:%S"
 """
-The formatting of the time upon reading the file, proceeding the text of `start_time_indicator`\n
+The formatting of the time upon reading the file, proceeding the text of `start_time_indicator`
+
 Default: `"%m/%d/%y %H:%M:%S"`
 """
 
 # i.e. *** data ***
 data_body_start = "*** data ***"
 """
-The indicator for the start of the data body (that is when the information begins)\n
+The indicator for the start of the data body (that is when the information begins)
+
 Default: `"*** data ***"`
 """
 
@@ -171,26 +181,30 @@ def parse_file(f) -> pd.DataFrame:
 
 seconds_since_start_of_day_header = "time (UT sec of day)"
 """
-The indicator for the seconds since the start of dat (That is in universal time)\n
+The indicator for the seconds since the start of dat (That is in universal time)
+
 Default: `"time (UT sec of day)"`
 """
 
 
 latitude_header = 'lat'
 """
-The header for latitude\n
+The header for latitude
+
 Default: `lat`
 """
 
 longitude_header = 'lon'
 """
-The header for longitude\n
+The header for longitude
+
 Default: `lon`
 """
 
 altitude_meters_header = 'alt(m)'
 """
-The header for altitude\n
+The header for altitude
+
 Default: `alt(m)`
 """
 
@@ -545,7 +559,8 @@ def generate_integer_chunks(
 
 downsampling_factor = 10
 """
-The downsampling factor for the topography data (`10` implies we only accept 1 every 10 datapoints into the graph)\n
+The downsampling factor for the topography data (`10` implies we only accept 1 every 10 datapoints into the graph)
+
 It's meant to act as an optomization technique
 """
 
@@ -727,8 +742,110 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, do_topography=T
 lightning_max_strike_time: float = 0.15
 """
 Max strike time, in seconds
+
+Default: `0.15`
 """
 
-def get_strikes(df: pd.DataFrame) -> pd.DataFrame:
+lightning_max_strike_distance: float = 3000.0
+"""
+The max strike distance, in meters
 
-    return df
+Default: `3000.0`
+"""
+
+lightning_minimum_speed: float = 299792.458
+"""
+The minimum speed to be monitored and accepted in meters per second (m/s). Recommended
+to be around 1-2% of the speed of light as lightning is
+traditionally slower than the speed of light due to
+environmental factors.
+
+Default: `299792.458` (The speed of light is)
+"""
+
+speed_of_light: float = 299792458.0 # m/s
+"""
+The literal representing the speed of light in meters per second (m/s). May
+be changed to be more precise.
+
+Default: `299792458.0`
+"""
+
+min_points_for_lightning = 2
+"""
+The minimum number of points required for a lightning strike identification
+"""
+
+def get_strikes(df: pd.DataFrame) -> List[pd.DataFrame]:
+    lightning_strikes: List[pd.DataFrame] = []
+    strike_times: List[Tuple[float, float]] = []  # List of (min_time, max_time) for each strike
+
+    unique_masks = df['mask'].unique()
+
+    # Iterate through each unique mask value
+    for mask_value in unique_masks:
+        # Filter the DataFrame to get only rows with the current mask value
+        mask_subset = df[df['mask'] == mask_value]
+        
+        for i in range(len(mask_subset)):
+            # Use double brackets to get a DataFrame instead of a Series
+            row = mask_subset.iloc[[i]]  
+
+            x1 = row['x(m)'].values[0]
+            y1 = row['y(m)'].values[0]
+            z1 = row['z(m)'].values[0]
+            time1 = row[seconds_since_start_of_day_header].values[0]
+
+            data_found = False  # Flag to check if row is added to an existing strike
+
+            for j in range(len(lightning_strikes)):
+                # Check if the new point's time is within acceptable range of the existing strike's time boundaries
+                min_time, max_time = strike_times[j]
+                if time1 < min_time - lightning_max_strike_time or time1 > max_time + lightning_max_strike_time:
+                    continue  # Skip this strike as the times are too different
+
+                if data_found:
+                    break
+
+                # Iterate over rows in the existing strike DataFrame
+                for k, other_row in lightning_strikes[j].iterrows():
+                    time2 = other_row[seconds_since_start_of_day_header]
+                    delta_t = time1 - time2
+
+                    # If times are grossly different, skip
+                    if np.abs(delta_t) > lightning_max_strike_time:
+                        continue
+
+                    x2 = other_row['x(m)']
+                    y2 = other_row['y(m)']
+                    z2 = other_row['z(m)']
+                    dist = np.sqrt((x1 - x2)**2 + (y1 - y2)**2 + (z1 - z2)**2)
+
+                    # If distance out of bounds, skip
+                    if dist > lightning_max_strike_distance:
+                        continue
+
+                    speed = np.abs(dist / delta_t) if delta_t != 0 else np.inf
+
+                    # If speed is unrealistic, skip
+                    if speed < lightning_minimum_speed or speed > speed_of_light:
+                        continue
+
+                    # Concatenate the row to the existing DataFrame
+                    lightning_strikes[j] = pd.concat([lightning_strikes[j], row], ignore_index=True)
+
+                    # Update the time boundaries for this strike
+                    strike_times[j] = (min(min_time, time1), max(max_time, time1))
+
+                    data_found = True
+                    break
+
+            # If the row didn't match any existing strike, start a new one
+            if not data_found:
+                lightning_strikes.append(row)
+                strike_times.append((time1, time1))  # Initialize min and max time with time1
+
+    # Filter out strikes with fewer rows than min_points_for_lightning
+    filtered_strikes = [strike for strike in lightning_strikes if len(strike) >= min_points_for_lightning]
+
+    return filtered_strikes
