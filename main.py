@@ -4,6 +4,7 @@ import dataParser as dp # dataParser.py
 import streamlit as st
 import numpy as np
 from datetime import datetime
+import time
 from dateutil.relativedelta import relativedelta
 from typing import (
     Dict,
@@ -74,7 +75,7 @@ dp.lightning_max_strike_distance = st.sidebar.number_input("Lightning maximum al
 dp.lightning_minimum_speed = st.sidebar.number_input("Lightning minimum allowed speed between points (m/s)", 0.0, 299792458.0, 299792.458)
 dp.min_points_for_lightning = mask_count_min
 
-do_topography_mapping: int = st.sidebar.checkbox(label="Enable Topography", value=False)
+do_topography_mapping: int = st.sidebar.checkbox(label="Enable Topography", value=True)
 dp.downsampling_factor = st.sidebar.number_input(
     "Topography Downsampling (Size Reduction) Factor", 1, 100, 20
 )
@@ -96,6 +97,34 @@ dp.count_required = [["mask", lambda count: count >= mask_count_min]]
 def main():
     st.title("Lightning Data Parser")
 
+    with st.expander("Manage `.dat` Files", expanded=False):
+        # Section: File Upload
+        st.header("Upload a `.dat` File")
+        uploaded_file = st.file_uploader("", type="dat")
+        
+        if uploaded_file is not None:
+            save_uploaded_file(uploaded_file)
+            st.success(f"File '{uploaded_file.name}' uploaded successfully!")
+
+        st.divider()
+
+        st.header("Delete a `.dat` File")
+
+        # Get list of .dat files
+        dat_files = [f for f in os.listdir(path=lightning_data_folder) if f.endswith(data_extension)]
+        
+        # Streamlit file selector
+        selected_file = st.selectbox("Select a data file:", dat_files)
+
+        # Option to delete the selected file
+        if st.button(f"Delete `{selected_file}`"):
+            st.error("Do you really want to delete this file?")
+            if st.button(f"Yes, delete `{selected_file}`"):
+                if delete_file(selected_file):
+                    st.success(f"File '{selected_file}' deleted successfully!")
+                else:
+                    st.error(f"Error: Could not delete file '{selected_file}'.")
+
     lightning_strikes: List[pd.DataFrame] = []
     strike_times: List[Tuple[str, str]] = []
 
@@ -115,21 +144,67 @@ def main():
     with st.spinner(f"Establishing timeline"):
         items = []
         for i in range(len(lightning_strikes)):
+            timeline_start = strike_times[i][0].split("T")
             data_dict = {
-                "id": i+1,
-                "content": lightning_strikes[i]['mask'][0],
-                "start": strike_times[i][0]
+                "id": i,
+                "content": f"{lightning_strikes[i]['mask'][0]} @ {timeline_start[1]}",
+                "start": strike_times[i][0],
             }
             items.append(data_dict)
-            if i > 10:
-                break
     
     from streamlit_timeline import st_timeline
-    timeline = st_timeline(items, groups=[], options={}, height="300px")
+    timeline = st_timeline(items, groups=[], options={"cluster": True, "snap": True, "stack": False, "min": start_date.strftime('%Y-%m-%d'), "max": end_date.strftime('%Y-%m-%d')}, height="150px")
+    print(timeline)
+    if timeline:
+        index: int = timeline["id"]
+        data_result: pd.DataFrame = lightning_strikes[index]
+        timeline_start = timeline["start"].split("T")
 
-    st.subheader("Selected item:")
-    st.write(timeline)
+        st.header(f"Lightning strike for `{timeline_start[0]}` at `{timeline_start[1]}`")
 
+        col1, col2 = st.columns(2)
+
+        # Display the parsed DataFrame
+        col2.write("Parsed Data:")
+        col2.dataframe(dp.color_df(data_result, 'mask'))
+        
+        # Option to download the DataFrame as a CSV
+        csv_output = data_result.to_csv(index=False)
+        st.download_button(
+            label="Download CSV",
+            data=csv_output,
+            file_name=f"{os.path.splitext(selected_file)[0]}.csv",
+            mime="text/csv"
+        )
+
+        # Option to delete the selected file
+        if st.button(f"Delete {selected_file}"):
+            if delete_file(selected_file):
+                st.success(f"File '{selected_file}' deleted successfully!")
+            else:
+                st.error(f"Error: Could not delete file '{selected_file}'.")
+
+        # Displaying figure
+        with st.spinner('Indexing Topography Data...'):
+            # Plot 3D scatter
+            fig = dp.get_interactive_3d_figure(data_result, 'mask', do_topography=do_topography_mapping)
+
+        # Display the 3D plot in Streamlit
+        col1.plotly_chart(fig)
+
+
+def save_uploaded_file(uploaded_file):
+    file_path = os.path.join(lightning_data_folder, uploaded_file.name)
+    with open(file_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+    return file_path
+
+def delete_file(file_name):
+    file_path = os.path.join(lightning_data_folder, file_name)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+        return True
+    return False
 
 if __name__ == "__main__":
     main()

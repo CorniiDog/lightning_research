@@ -125,7 +125,7 @@ def main():
     st.header("Manage `.dat` files")
     
     # Get list of .dat files
-    dat_files = [f for f in os.listdir(lightning_data_folder) if f.endswith(data_extension)]
+    dat_files = [f for f in os.listdir(path=lightning_data_folder) if f.endswith(data_extension)]
     
     # Streamlit file selector
     selected_file = st.selectbox("Select a data file:", dat_files)
