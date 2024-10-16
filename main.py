@@ -45,12 +45,12 @@ dp.process_handling = {
 }
 # dataParser.py filter procedure to accept data between ranges, and reject rows that don't accept
 # Sliders for filter parameters
-st.sidebar.header("Filter Settings (`-1` = disable)")
+st.sidebar.header("Filter Settings")
 
 chi_min: int = st.sidebar.number_input("Reduced chi^2 min", 0, 100, 0)
-chi_max: int = st.sidebar.number_input("Reduced chi^2 max", -1, 1000, 50)
+chi_max: int = st.sidebar.number_input("Reduced chi^2 max", 0, 1000, 50)
 km_min: int = st.sidebar.number_input("Altitude (km) min", 0, 100, 0)
-km_max: int = st.sidebar.number_input("Altitude (km) max", -1, 200, 200)
+km_max: int = st.sidebar.number_input("Altitude (km) max", 0, 200, 200)
 mask_count_min: int = st.sidebar.slider("Mask minimum occurances", 1, 10, 2)
 dp.lightning_max_strike_time = st.sidebar.number_input("Lightning maximum allowed strike time (s)", 0.0, 2.0, 0.15)
 dp.lightning_max_strike_distance = st.sidebar.number_input("Lightning maximum allowed strike distance (km)", 0.0, 100.0, 3.0) * 1000.0
