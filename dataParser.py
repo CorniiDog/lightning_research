@@ -472,7 +472,7 @@ def cache_topography_tile(pickle_dir: str, tile: Tuple[int, int], params: Dict[s
 
 cities_file: str | None = None
 """
-The directory for the `.shp` cities file, within the folder of cities.
+The `.shp` file of the cities, within the folder of respective data downloaded.
 
 For example: `cities_file = "ne_110m_populated_places/ne_110m_populated_places.shp"`
 
