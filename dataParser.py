@@ -20,6 +20,12 @@ from typing import (
 )  # For explicit types to rigid-ify the coding process
 
 transformer_to_ecef = Transformer.from_crs("EPSG:4326", "EPSG:4978")
+"""
+Z-axis is aligned with the Earth's rotation axis, meaning it points through the North and South Poles.\n
+X-axis points from the center of the Earth to the intersection of the Equator and the Prime Meridian (0° longitude).\n
+Y-axis points from the center of the Earth to the intersection of the Equator and 90° East longitude.
+"""
+
 
 params = Topography.DEFAULT.copy()
 params["south"] = 25.84  # Modify these coordinates for your area of interest (Texas)
@@ -101,10 +107,22 @@ filters: List = [
 
 # i.e. Data start time: 09/11/24 20:40:00
 start_time_indicator = "Data start time:"
+"""
+The text that indicates the start time of the data
+"""
+
 start_time_format = "%m/%d/%y %H:%M:%S"
+"""
+The formatting of the time upon reading the file, proceeding the text of `start_time_indicator`\n
+Default: `"%m/%d/%y %H:%M:%S"`
+"""
 
 # i.e. *** data ***
 data_body_start = "*** data ***"
+"""
+The indicator for the start of the data body (that is when the information begins)\n
+Default: `"*** data ***"`
+"""
 
 ######################################################################################################
 ## Helper functions below with processing and retreiving a nice-looking DataFrame
@@ -152,11 +170,29 @@ def parse_file(f) -> pd.DataFrame:
 
 
 seconds_since_start_of_day_header = "time (UT sec of day)"
+"""
+The indicator for the seconds since the start of dat (That is in universal time)\n
+Default: `"time (UT sec of day)"`
+"""
 
 
 latitude_header = 'lat'
+"""
+The header for latitude\n
+Default: `lat`
+"""
+
 longitude_header = 'lon'
+"""
+The header for longitude\n
+Default: `lon`
+"""
+
 altitude_meters_header = 'alt(m)'
+"""
+The header for altitude\n
+Default: `alt(m)`
+"""
 
 def parse_data(
     f, data_headers: list[str], date_start: datetime) -> pd.DataFrame:
@@ -177,9 +213,9 @@ def parse_data(
     dict_result["day"] = []
     dict_result["unix"] = []
 
-    dict_result['x(km)'] = []
-    dict_result['y(km)'] = []
-    dict_result['z(km)'] = []
+    dict_result['x(m)'] = []
+    dict_result['y(m)'] = []
+    dict_result['z(m)'] = []
 
     # Create counter object with initialization of data
     counters = {}
@@ -259,18 +295,15 @@ def parse_data(
         x, y, z = 0.0, 0.0, 0.0
         if lat and lon and alt:
             x, y, z = transformer_to_ecef.transform(lat, lon, alt)
-            x /= 1000.0
-            y /= 1000.0
-            z /= 1000.0
 
 
         dict_result["month"].append(respective_time.month)
         dict_result["day"].append(respective_time.day)
         dict_result["year"].append(respective_time.year)
         dict_result["unix"].append(respective_time.timestamp())
-        dict_result["x(km)"].append(x)
-        dict_result["y(km)"].append(y)
-        dict_result["z(km)"].append(z)
+        dict_result["x(m)"].append(x)
+        dict_result["y(m)"].append(y)
+        dict_result["z(m)"].append(z)
 
     df = pd.DataFrame(dict_result) # Create dataframe
 
@@ -438,10 +471,18 @@ def cache_topography_tile(pickle_dir: str, tile: Tuple[int, int], params: Dict[s
 
 
 cities_file: str | None = None
+"""
+The directory for the `.shp` cities file, within the folder of cities.
 
+For example: `cities_file = "ne_110m_populated_places/ne_110m_populated_places.shp"`
 
-# Define chunk size and over-extension
+You can download data here: https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-populated-places/
+"""
+
 chunk_size = 2.0
+"""
+The chunk size to chunkify the topography data (i.e. `2.0` indicates chunks of lat/lon 2x2 chunks)
+"""
 
 def align_down(x: float, base: float = 1.0) -> int:
     """Aligns the number down to the nearest multiple of base and returns an integer."""
@@ -502,7 +543,11 @@ def generate_integer_chunks(
             lon_start += chunk_size
         lat_start += chunk_size
 
-downsampling_factor = 10  # Using every 5th point for downsampling
+downsampling_factor = 10
+"""
+The downsampling factor for the topography data (`10` implies we only accept 1 every 10 datapoints into the graph)\n
+It's meant to act as an optomization technique
+"""
 
 def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, do_topography=True):
     """
@@ -678,3 +723,12 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, do_topography=T
     )
 
     return fig
+
+lightning_max_strike_time: float = 0.15
+"""
+Max strike time, in seconds
+"""
+
+def get_strikes(df: pd.DataFrame) -> pd.DataFrame:
+
+    return df

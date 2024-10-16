@@ -1,8 +1,8 @@
 import os
 import pandas as pd
 import dataParser as dp # dataParser.py
-import dataLogger as dl # dataLogger
 import streamlit as st
+import numpy as np
 
 st.set_page_config(
     page_title=None, page_icon=None, layout="wide", initial_sidebar_state="auto", menu_items=None
@@ -41,7 +41,7 @@ dp.process_handling = {
     "alt(m)": float,  # Convert to float
     "reduced chi^2": float,  # Convert to float
     "P(dBW)": float,  # Convert to float
-    "mask": lambda hex_str: int(hex_str, 16),  # Convert the hex-code mask to decimal
+    "mask": str,
 }
 # dataParser.py filter procedure to accept data between ranges, and reject rows that don't accept
 # Sliders for filter parameters
@@ -79,13 +79,55 @@ def main():
     dat_files = [f for f in os.listdir(lightning_data_folder) if f.endswith(data_extension)]
 
     # Cache files for processing the month
-    print("Processing file cache")
-    for file in dat_files:
-        data_result: pd.DataFrame = dp.get_dataframe(lightning_data_folder, file)
+    with st.spinner("Parsing data files"):
+        for file in dat_files:
+            data_result: pd.DataFrame = dp.get_dataframe(lightning_data_folder, file)
 
-    print("Establishing timelines")
-    
+            # Assuming 'mask' is the name of the column containing the mask values in your DataFrame
+            unique_masks = data_result['mask'].unique()
 
+            # Iterate through each unique mask value
+            for mask_value in unique_masks:
+                # Filter the DataFrame to get only rows with the current mask value
+                mask_subset = data_result[data_result['mask'] == mask_value]
+
+                print(file, mask_subset)
+                
+                for i in range(len(mask_subset)):
+                    for j in range(i + 1, len(mask_subset)):
+                        row1 = mask_subset.iloc[i]
+                        r1x, r1y, r1z = row1['x(m)'], row1['y(m)'], row1['z(m)']
+                        t1 = row1['time (UT sec of day)']
+
+                        row2 = mask_subset.iloc[j]
+                        r2x, r2y, r2z = row2['x(m)'], row2['y(m)'], row2['z(m)']
+                        t2 = row2['time (UT sec of day)'] # seconds
+
+                        dist = np.sqrt(np.pow(r1x-r2x, 2) + np.pow(r1y-r2y, 2) + np.pow(r1z-r2z, 2))
+                        delta_t = t1 - t2
+                        potential_speed = np.abs(dist/delta_t)
+
+                        speed_of_light = 299792458 # m/s
+
+                        # margin = 0.001
+                        # if potential_speed > speed_of_light * margin and potential_speed < speed_of_light:
+                        #     print(potential_speed, row1['mask'])
+
+                        # Run file
+                        # See the mask is 3e28 with 3802 rows in LYLOUT_240911_184000_0600_Exported.dat
+                        # The mask is spanned by around a 10 minute gap
+                break
+                    
+
+
+
+
+
+
+            
+
+    with st.spinner("Establishing timelines"):
+        print("Hello world")
 
 
 if __name__ == "__main__":
