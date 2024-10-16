@@ -49,12 +49,12 @@ st.sidebar.header("Filter Settings")
 
 chi_min: int = st.sidebar.number_input("Reduced chi^2 min", 0, 100, 0)
 chi_max: int = st.sidebar.number_input("Reduced chi^2 max", 0, 1000, 50)
-km_min: int = st.sidebar.number_input("Altitude (km) min", 0, 100, 0)
-km_max: int = st.sidebar.number_input("Altitude (km) max", 0, 200, 200)
+km_min: int = st.sidebar.number_input("Altitude min (km)", 0, 100, 0)
+km_max: int = st.sidebar.number_input("Altitude max (km)", 0, 200, 200)
 mask_count_min: int = st.sidebar.slider("Mask minimum occurances", 1, 10, 2)
-dp.lightning_max_strike_time = st.sidebar.number_input("Lightning maximum allowed strike time (s)", 0.0, 2.0, 0.15)
-dp.lightning_max_strike_distance = st.sidebar.number_input("Lightning maximum allowed strike distance (km)", 0.0, 100.0, 3.0) * 1000.0
-dp.lightning_minimum_speed = st.sidebar.number_input("Lightning minimum allowed speed (m/s)", 0.0, 299792458.0, 299792.458)
+dp.lightning_max_strike_time = st.sidebar.number_input("Lightning maximum allowed strike time between points (s)", 0.0, 2.0, 0.15)
+dp.lightning_max_strike_distance = st.sidebar.number_input("Lightning maximum allowed strike distance between points (km)", 0.0, 100.0, 3.0) * 1000.0
+dp.lightning_minimum_speed = st.sidebar.number_input("Lightning minimum allowed speed between points (m/s)", 0.0, 299792458.0, 299792.458)
 dp.min_points_for_lightning = mask_count_min
 
 do_topography_mapping: int = st.sidebar.checkbox(label="Enable Topography", value=False)
