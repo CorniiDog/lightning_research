@@ -34,6 +34,8 @@ params["south"] = 25.84  # Modify these coordinates for your area of interest (T
 params["north"] = 36.50
 params["west"] = -106.65
 params["east"] = -93.51
+params['dem_type'] = 'SRTMGL3'
+params['cache_dir'] = '~/.bmi_topography'
 
 # Essential functions to use
 count_required = []
@@ -430,10 +432,11 @@ def cache_topography_data(pickle_file, params) -> pd.DataFrame:
             return pickle.load(f)
     else:
         # Fetch the topography data if the pickle file does not exist
-        print("Fetching new topography data from OpenTopography...")
-        topo_data = Topography(**params)
-        topo_data.fetch()  # Download the data
-        da = topo_data.load()  # Load into xarray DataArray
+        with st.spinner("Fetching new topography data from OpenTopography..."):
+            print("Fetching new topography data from OpenTopography...")
+            topo_data = Topography(**params)
+            topo_data.fetch()  # Download the data
+            da = topo_data.load()  # Load into xarray DataArray
 
         # Save the data to a pickle file for future use
         with open(pickle_file, 'wb') as f:
@@ -582,6 +585,190 @@ The downsampling factor for the topography data (`10` implies we only accept 1 e
 It's meant to act as an optomization technique
 """
 
+def add_topography(fig, df:pd.DataFrame, lat=True, lon=True, alt=True):
+    lowest_lon = None
+    largest_lon = None
+    for longitude in df['lon']:
+        if largest_lon == None or longitude > largest_lon:
+            largest_lon = longitude
+        if lowest_lon == None or longitude < lowest_lon:
+            lowest_lon = longitude
+    
+    params["west"] = lowest_lon - 1
+    params["east"] = largest_lon + 1
+
+    lowest_lat = None
+    highest_lat = None
+    for latitude in df['lat']:
+        if highest_lat == None or latitude > highest_lat:
+            highest_lat = latitude
+        if lowest_lat == None or latitude < lowest_lat:
+            lowest_lat = latitude
+
+    params["south"] = lowest_lat - 1
+    params["north"] = highest_lat + 1
+    
+    for idx, chunk in enumerate(generate_integer_chunks(params['south'], params['north'], params['west'], params['east'], chunk_size), start=1):
+        bbox_key = f"{chunk['south']}_{chunk['north']}_{chunk['west']}_{chunk['east']}"
+        pickle_file = f"topography_cache/{bbox_key}.pkl"
+
+        # Step 1: Cache or load the topography data
+        da = cache_topography_data(pickle_file, params)
+
+        # Step 2: Convert the DataArray to a NumPy array for the topography surface plot
+        elevation_data = da.values.squeeze()
+
+        # Extract latitude and longitude from the DataArray
+        latitudes = da.y.values
+        longitudes = da.x.values
+
+        # Step 3: Downsample the topography data for faster plotting
+        # Adjust the factor based on your performance needs
+        elevation_data_downsampled = elevation_data[::downsampling_factor, ::downsampling_factor]
+        latitudes_downsampled = latitudes[::downsampling_factor]
+        longitudes_downsampled = longitudes[::downsampling_factor]
+
+        if lat and lon and alt:
+            fig.add_trace(go.Surface(
+                z=elevation_data_downsampled,
+                x=longitudes_downsampled,
+                y=latitudes_downsampled,
+                colorscale='Viridis',
+                opacity=0.7,
+                showscale=True
+            ))
+        elif lat and lon and not alt:
+            fig.add_trace(go.Contour(
+                z=elevation_data_downsampled,
+                x=longitudes_downsampled,
+                y=latitudes_downsampled,
+                colorscale='Viridis',
+                showscale=True,
+                opacity=0.7,
+                contours=dict(
+                    coloring='heatmap',
+                    showlines=False,
+                )
+            ))
+        
+    return fig
+
+def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, do_topography=True, lat=True, lon=True, alt=False):
+    """
+    Create an interactive 2D plot based on the selected axes, colored by the identifier.
+
+    :param df: DataFrame containing 'lat', 'lon', 'alt(m)', and identifier columns
+    :param identifier: Column name to color code the data points
+    :param do_topography: Boolean indicating whether to include topography data (only applicable for lat vs lon plot)
+    :param lat: Boolean indicating whether to include latitude axis
+    :param lon: Boolean indicating whether to include longitude axis
+    :param alt: Boolean indicating whether to include altitude axis
+    :return: Plotly figure object
+    """
+    # Determine the axes based on the parameters
+    axes = []
+    if lon:
+        axes.append('lon')
+    if alt:
+        axes.append('alt(m)')
+    if lat:
+        axes.append('lat')
+
+    if len(axes) != 2:
+        raise ValueError("Exactly two of lat, lon, alt must be True for a 2D plot.")
+
+    x_axis = axes[0]
+    y_axis = axes[1]
+
+    # Initialize figure
+    fig = go.Figure()
+
+    if {'lon', 'lat'} == set(axes):
+        # If do_topography is True, plot the topography data
+        if do_topography:
+            fig = add_topography(fig, df, lat, lon, alt)
+
+        # If cities data is available, plot the cities
+        if cities_file:
+            gdf = gpd.read_file(cities_file)
+            gdf = gdf.to_crs(epsg=4326)
+            # Extract latitude and longitude from the geometry column
+            gdf['latitude'] = gdf.geometry.y
+            gdf['longitude'] = gdf.geometry.x
+            # Filter the GeoDataFrame based on the bounding box and create a copy
+            filtered_gdf = gdf[
+                (gdf['latitude'] >= params['south']) &
+                (gdf['latitude'] <= params['north']) &
+                (gdf['longitude'] >= params['west']) &
+                (gdf['longitude'] <= params['east'])
+            ].copy()
+
+            if not filtered_gdf.empty:
+                filtered_gdf.reset_index(drop=True, inplace=True)
+
+                # Plot the cities
+                fig.add_trace(go.Scatter(
+                    x=filtered_gdf['longitude'],
+                    y=filtered_gdf['latitude'],
+                    mode='markers+text',
+                    text=filtered_gdf['NAME'],
+                    name='Cities',
+                    textposition='top center',
+                    marker=dict(size=8, color='red'),
+                    showlegend=False
+                ))
+        fig.update_layout(
+        xaxis=dict(range=[min(params['west'], np.min(df['lon'])), max(params['east'], np.max(df['lon']))]),
+        yaxis=dict(range=[min(params['south'], np.min(df['lat'])), max(params['north'], np.max(df['lon']))])
+        )
+
+    elif {'lon', 'alt(m)'} == set(axes):
+        fig.update_layout(
+            xaxis=dict(range=[min(params['west'], np.min(df['lon'])), max(params['east'], np.max(df['lon']))])
+        )
+    elif {'alt(m)', 'lat'} == set(axes):
+        fig.update_layout(
+            yaxis=dict(range=[min(params['south'], np.min(df['lat'])), max(params['north'], np.max(df['lon']))])
+        )
+
+    # Generate colors for the data points
+    unique_values = df[identifier].unique()
+    value_colors = {val: color for val, color in zip(unique_values, generate_colors(len(unique_values)))}
+
+    # Limit the number of points for performance
+    max_points = 10000  # Adjust based on performance needs
+    if len(df) > max_points:
+        df_sampled = df.sample(n=max_points, random_state=42)
+        print(f"Sampling {max_points} out of {len(df)} data points for plotting.")
+    else:
+        df_sampled = df
+
+    # Plot the data points
+    for value, color in value_colors.items():
+        subset = df_sampled[df_sampled[identifier] == value]
+        if subset.empty:
+            continue
+        fig.add_trace(go.Scatter(
+            x=subset[x_axis],
+            y=subset[y_axis],
+            mode='markers',
+            marker=dict(size=8, color=color, opacity=0.7),
+            name=f'{identifier} {value}',
+            showlegend=False
+        ))
+    
+
+    # Update the layout
+    fig.update_layout(
+        xaxis_title=x_axis,
+        yaxis_title=y_axis,
+        height=600,
+        legend_title=identifier
+    )
+
+    return fig
+    
+
 def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, do_topography=True):
     """
     Create an interactive 3D scatter plot for latitude, longitude, and altitude, colored by mask.
@@ -595,62 +782,13 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, do_topography=T
     # Topography generation
     # Generate a unique filename based on the bounding box
 
-    os.makedirs("topography_cache", exist_ok=True)  # Ensure cache directory exists
-
     fig = go.Figure()
 
+    os.makedirs("topography_cache", exist_ok=True)  # Ensure cache directory exists
+
+
     if do_topography:
-
-        lowest_lon = None
-        largest_lon = None
-        for longitude in df['lon']:
-            if largest_lon == None or longitude > largest_lon:
-                largest_lon = longitude
-            if lowest_lon == None or longitude < lowest_lon:
-                lowest_lon = longitude
-        
-        params["west"] = lowest_lon - 1
-        params["east"] = largest_lon + 1
-
-        lowest_lat = None
-        highest_lat = None
-        for latitude in df['lat']:
-            if highest_lat == None or latitude > highest_lat:
-                highest_lat = latitude
-            if lowest_lat == None or latitude < lowest_lat:
-                lowest_lat = latitude
-
-        params["south"] = lowest_lat - 1
-        params["north"] = highest_lat + 1
-        
-        for idx, chunk in enumerate(generate_integer_chunks(params['south'], params['north'], params['west'], params['east'], chunk_size), start=1):
-            bbox_key = f"{chunk['south']}_{chunk['north']}_{chunk['west']}_{chunk['east']}"
-            pickle_file = f"topography_cache/{bbox_key}.pkl"
-
-            # Step 1: Cache or load the topography data
-            da = cache_topography_data(pickle_file, params)
-
-            # Step 2: Convert the DataArray to a NumPy array for the topography surface plot
-            elevation_data = da.values.squeeze()
-
-            # Extract latitude and longitude from the DataArray
-            latitudes = da.y.values
-            longitudes = da.x.values
-
-            # Step 3: Downsample the topography data for faster plotting
-            # Adjust the factor based on your performance needs
-            elevation_data_downsampled = elevation_data[::downsampling_factor, ::downsampling_factor]
-            latitudes_downsampled = latitudes[::downsampling_factor]
-            longitudes_downsampled = longitudes[::downsampling_factor]
-
-            fig.add_trace(go.Surface(
-                z=elevation_data_downsampled,
-                x=longitudes_downsampled,
-                y=latitudes_downsampled,
-                colorscale='Viridis',
-                opacity=0.7,
-                showscale=True
-            ))
+        fig = add_topography(fig, df)
 
 
     # If cities are able to be loaded, then load cities
@@ -740,13 +878,13 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, do_topography=T
             title='Longitude',
             gridcolor='lightgray',  # Lighter color for gridlines
             zerolinecolor='lightgray',  # Lighter color for axis lines
-            range=[min(params['west'], np.min(subset['lon'])), max(params['east'], np.max(subset['lon']))]
+            range=[min(params['west'], np.min(df['lon'])), max(params['east'], np.max(df['lon']))]
         ),
         yaxis=dict(
             title='Latitude',
             gridcolor='lightgray',  # Lighter color for gridlines
             zerolinecolor='lightgray',  # Lighter color for axis lines
-            range=[min(params['south'], np.min(subset['lat'])), max(params['north'], np.max(subset['lon']))]
+            range=[min(params['south'], np.min(df['lat'])), max(params['north'], np.max(df['lon']))]
         ),
         zaxis=dict(
             title='Altitude (m)',
