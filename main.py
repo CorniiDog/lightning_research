@@ -68,12 +68,13 @@ approved_files = []
 start_date = None
 end_date = None
 if filter_type == "Filter By Date Range":
-    now: datetime = datetime.now()
-    start_date = st.sidebar.date_input("Start Date", now - relativedelta(months=1))
-    dp.start_datetime = datetime(start_date.year, start_date.month, start_date.day)
-    end_date = st.sidebar.date_input("End Date", now)
-    dp.end_datetime = datetime(end_date.year, end_date.month, end_date.day)
-    approved_files = dat_files
+    with st.sidebar.expander("Select Date Range", expanded=False):
+        now: datetime = datetime.now()
+        start_date = st.date_input("Start Date", now - relativedelta(months=1))
+        dp.start_datetime = datetime(start_date.year, start_date.month, start_date.day)
+        end_date = st.date_input("End Date", now)
+        dp.end_datetime = datetime(end_date.year, end_date.month, end_date.day)
+        approved_files = dat_files
 else:
     dp.start_datetime = None
     start_date = None
@@ -81,7 +82,7 @@ else:
     end_date = None
 
     approved_files = []
-    with st.sidebar.expander("File Selection", expanded=False):
+    with st.sidebar.expander("Select Files", expanded=False):
         for file in dat_files:
             if st.checkbox(file):
                 if file not in approved_files:
@@ -90,20 +91,28 @@ else:
                 if file in approved_files:
                     approved_files.remove(file)
 
-chi_min: int = st.sidebar.number_input("Reduced chi^2 min", 0, 100, 0)
-chi_max: int = st.sidebar.number_input("Reduced chi^2 max", 0, 1000, 50)
-km_min: int = st.sidebar.number_input("Altitude min (km)", 0, 100, 0)
-km_max: int = st.sidebar.number_input("Altitude max (km)", 0, 200, 200)
-mask_count_min: int = st.sidebar.slider("Mask minimum occurances", 1, 10, 2)
-dp.lightning_max_strike_time = st.sidebar.number_input("Lightning maximum allowed strike time between points (s)", 0.0, 2.0, 0.15)
-dp.lightning_max_strike_distance = st.sidebar.number_input("Lightning maximum allowed strike distance between points (km)", 0.0, 100.0, 3.0) * 1000.0
-dp.lightning_minimum_speed = st.sidebar.number_input("Lightning minimum allowed speed between points (m/s)", 0.0, 299792458.0, 299792.458)
-dp.min_points_for_lightning = mask_count_min
+with st.sidebar.expander("Filtering Parameters", expanded=True):
+    chi_min: int = st.number_input("Reduced chi^2 min", 0, 100, 0)
+    chi_max: int = st.number_input("Reduced chi^2 max", 0, 1000, 50)
+    km_min: int = st.number_input("Altitude min (km)", 0, 100, 0)
+    km_max: int = st.number_input("Altitude max (km)", 0, 200, 200)
+    mask_count_min: int = st.slider("Mask minimum occurances", 1, 10, 2)
 
-do_topography_mapping: int = st.sidebar.checkbox(label="Enable Topography", value=True)
-dp.downsampling_factor = st.sidebar.number_input(
-    "Topography Downsampling (Size Reduction) Factor", 1, 100, 20
-)
+with st.sidebar.expander("Lightning Parameters", expanded=True):
+    dp.lightning_max_strike_time = st.number_input("Lightning maximum allowed strike time between points (s)", 0.0, 2.0, 0.15)
+    dp.lightning_max_strike_distance = st.number_input("Lightning maximum allowed strike distance between points (km)", 0.0, 100.0, 3.0) * 1000.0
+    dp.lightning_minimum_speed = st.number_input("Lightning minimum allowed speed between points (m/s)", 0.0, 299792458.0, 299792.458)
+    dp.min_points_for_lightning = mask_count_min
+
+with st.sidebar.expander(label="Calendar Parameters", expanded=True):
+    max_calendar_items: int = st.number_input(
+        "Maximum Lightning Strikes To Display", 1, 1000, value=200
+    )
+with st.sidebar.expander("Topography Parameters", expanded=True):
+    do_topography_mapping: int = st.checkbox(label="Enable Topography", value=False)
+    dp.downsampling_factor = st.number_input(
+        "Topography Downsampling (Size Reduction) Factor", 1, 100, 20
+    )
 
 # Update the dp.filters and dp.count_required dynamically
 dp.filters = [
@@ -174,6 +183,8 @@ def main():
                     "content": f"{lightning_strikes[i]['mask'][0]} @ {timeline_start[1]}",
                     "start": strike_times[i][0],
                 }
+                if i > max_calendar_items-1:
+                    break
                 items.append(data_dict)
         
         from streamlit_timeline import st_timeline
