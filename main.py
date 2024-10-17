@@ -18,6 +18,13 @@ st.set_page_config(
     page_title=None, page_icon=None, layout="wide", initial_sidebar_state="auto", menu_items=None
 )
 
+st.markdown(f'''
+    <style>
+        section[data-testid="stSidebar"] .css-ng1t4o {{width: 14rem;}}
+        section[data-testid="stSidebar"] .css-1d391kg {{width: 14rem;}}
+    </style>
+''',unsafe_allow_html=True)
+
 st.title("Connor White's Lightning Data Parser")
 st.divider()
 
@@ -65,35 +72,29 @@ dat_files = [f for f in os.listdir(path=lightning_data_folder) if f.endswith(dat
 st.sidebar.header("Parameters")
 
 
-choices = ["Filter By Date Range", "Filter By Files"]
-filter_type = st.sidebar.selectbox("Select Filter Type", choices)
+with st.sidebar.expander("File/Date Select", expanded=True):
 
-approved_files = []
-start_date = None
-end_date = None
-if filter_type == "Filter By Date Range":
-    with st.sidebar.expander("Select Date Range", expanded=True):
-        now: datetime = datetime.now()
-        start_date = st.date_input("Start Date", now - relativedelta(months=1))
-        dp.start_datetime = datetime(start_date.year, start_date.month, start_date.day)
-        end_date = st.date_input("End Date", now)
-        dp.end_datetime = datetime(end_date.year, end_date.month, end_date.day)
-        approved_files = dat_files
-else:
-    dp.start_datetime = None
-    start_date = None
-    dp.end_datetime = None
-    end_date = None
+
+    choices = ["Filter By Date Range", "Filter By Files"]
+    filter_type = st.selectbox("Select Filter Type", choices)
 
     approved_files = []
-    with st.sidebar.expander("Select Files", expanded=False):
-        for file in dat_files:
-            if st.checkbox(file):
-                if file not in approved_files:
-                    approved_files.append(file)
-            else:
-                if file in approved_files:
-                    approved_files.remove(file)
+    start_date = None
+    end_date = None
+    if filter_type == "Filter By Date Range":
+            now: datetime = datetime.now()
+            start_date = st.date_input("Start Date", now - relativedelta(months=1))
+            dp.start_datetime = datetime(start_date.year, start_date.month, start_date.day)
+            end_date = st.date_input("End Date", now)
+            dp.end_datetime = datetime(end_date.year, end_date.month, end_date.day)
+            approved_files = dat_files
+    else:
+        dp.start_datetime = None
+        start_date = None
+        dp.end_datetime = None
+        end_date = None
+
+        approved_files = st.multiselect("Select files", dat_files)
 
 with st.sidebar.expander("Filtering Parameters", expanded=True):
     chi_min: int = st.number_input("Reduced chi^2 min", 0, 100, 0)
