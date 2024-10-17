@@ -184,6 +184,7 @@ def main():
                     "start": strike_times[i][0],
                 }
                 if i > max_calendar_items-1:
+                    st.warning(f"Only displaying maximum of {max_calendar_items} items")
                     break
                 items.append(data_dict)
         
