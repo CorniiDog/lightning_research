@@ -4,7 +4,7 @@ import dataParser as dp # dataParser.py
 import streamlit as st
 import numpy as np
 from datetime import datetime
-import time
+from streamlit_timeline import st_timeline
 from dateutil.relativedelta import relativedelta
 from typing import (
     Dict,
@@ -17,6 +17,9 @@ from typing import (
 st.set_page_config(
     page_title=None, page_icon=None, layout="wide", initial_sidebar_state="auto", menu_items=None
 )
+
+st.title("Connor White's Lightning Data Parser")
+st.divider()
 
 # The lightning data folder containing the .dat files
 lightning_data_folder: str = "lightning_data"
@@ -59,7 +62,8 @@ dat_files = [f for f in os.listdir(path=lightning_data_folder) if f.endswith(dat
 
 # dataParser.py filter procedure to accept data between ranges, and reject rows that don't accept
 # Sliders for filter parameters
-st.sidebar.header("Filter Settings")
+st.sidebar.header("Parameters")
+
 
 choices = ["Filter By Date Range", "Filter By Files"]
 filter_type = st.sidebar.selectbox("Select Filter Type", choices)
@@ -68,7 +72,7 @@ approved_files = []
 start_date = None
 end_date = None
 if filter_type == "Filter By Date Range":
-    with st.sidebar.expander("Select Date Range", expanded=False):
+    with st.sidebar.expander("Select Date Range", expanded=True):
         now: datetime = datetime.now()
         start_date = st.date_input("Start Date", now - relativedelta(months=1))
         dp.start_datetime = datetime(start_date.year, start_date.month, start_date.day)
@@ -106,7 +110,7 @@ with st.sidebar.expander("Lightning Parameters", expanded=True):
 
 with st.sidebar.expander(label="Calendar Parameters", expanded=True):
     max_calendar_items: int = st.number_input(
-        "Maximum Lightning Strikes To Display", 1, 1000, value=200
+        "Maximum Lightning Strikes To Display", 1, 10000, value=1000
     )
 with st.sidebar.expander("Topography Parameters", expanded=True):
     do_topography_mapping: int = st.checkbox(label="Enable Topography", value=False)
@@ -129,7 +133,84 @@ if chi_max >= 0:
 dp.count_required = [["mask", lambda count: count >= mask_count_min]]
 # main function that goes through the files
 def main():
-    st.title("Lightning Data Parser")
+
+    lightning_strikes: List[pd.DataFrame] = []
+    strike_times: List[Tuple[str, str]] = []
+    
+    # Cache files for processing the month
+    for file in approved_files:
+        if len(approved_files) > 0 and file not in approved_files:
+            continue
+
+        with st.spinner(f"Retreiving data for `{file}`"):
+            data_result: pd.DataFrame = dp.get_dataframe(lightning_data_folder, file)
+
+        with st.spinner(f"Parsing lightning data for `{file}`"):
+            sub_strikes, substrike_times = dp.get_strikes(data_result)
+            lightning_strikes += sub_strikes # Concatenate to lightning_strikes
+            strike_times += substrike_times
+
+
+    if len(lightning_strikes) > 0:
+        with st.spinner(f"Establishing timeline"):
+            items = []
+            for i in range(len(lightning_strikes)):
+                timeline_start = strike_times[i][0].split("T")
+                data_dict = {
+                    "id": i,
+                    "content": f"{lightning_strikes[i]['mask'][0]} @ {timeline_start[1]}",
+                    "start": strike_times[i][0],
+                }
+                if i > max_calendar_items-1:
+                    st.warning(f"Only displaying maximum of {max_calendar_items} items")
+                    break
+                items.append(data_dict)
+
+        options = {"cluster": True, "snap": True, "stack": False}
+        if start_date and end_date:
+            options["min"] = start_date.strftime('%Y-%m-%d')
+            options["max"] = end_date.strftime('%Y-%m-%d')
+
+        st.header("Select Lightning Event")
+
+        timeline = st_timeline(items, groups=[], options=options, height="150px")
+        print(timeline)
+        if timeline:
+            index: int = timeline["id"]
+            data_result: pd.DataFrame = lightning_strikes[index]
+            timeline_start = timeline["start"].split("T")
+            mask = data_result['mask'][0]
+            st.header(f"Lightning strike for mask `{mask}` on `{timeline_start[0]}` at `{timeline_start[1]}` UTC")
+
+            col1, col2 = st.columns(2)
+
+            # Display the parsed DataFrame
+            col2.write("Parsed Data:")
+            col2.dataframe(dp.color_df(data_result, 'mask'))
+            
+            # Option to download the DataFrame as a CSV
+            csv_output = data_result.to_csv(index=False)
+            col2.download_button(
+                label="Download CSV",
+                data=csv_output,
+                file_name=f"{mask}_{timeline_start[0]}_{timeline_start[1]}.csv",
+                mime="text/csv"
+            )
+
+            # Displaying figure
+            fig = None
+            with st.spinner('Indexing Topography Data...'):
+                # Plot 3D scatter
+                fig = dp.get_interactive_3d_figure(data_result, 'mask', do_topography=do_topography_mapping)
+
+
+            # Display the 3D plot in Streamlit
+            if fig:
+                col1.plotly_chart(fig)
+    else: # No lightning data
+        st.warning("Data too restrained. Modify parameters on left sidebar.")
+
+    st.divider()
 
     with st.expander("Manage `.dat` Files", expanded=False):
         # Section: File Upload
@@ -155,80 +236,6 @@ def main():
                     st.success(f"File '{selected_file}' deleted successfully!")
                 else:
                     st.error(f"Error: Could not delete file '{selected_file}'.")
-
-    lightning_strikes: List[pd.DataFrame] = []
-    strike_times: List[Tuple[str, str]] = []
-    
-    # Cache files for processing the month
-    for file in approved_files:
-        if len(approved_files) > 0 and file not in approved_files:
-            continue
-
-
-        with st.spinner(f"Retreiving data for `{file}`"):
-            data_result: pd.DataFrame = dp.get_dataframe(lightning_data_folder, file)
-
-        with st.spinner(f"Parsing lightning data for `{file}`"):
-            sub_strikes, substrike_times = dp.get_strikes(data_result)
-            lightning_strikes += sub_strikes # Concatenate to lightning_strikes
-            strike_times += substrike_times
-
-    if len(lightning_strikes) > 0:
-        with st.spinner(f"Establishing timeline"):
-            items = []
-            for i in range(len(lightning_strikes)):
-                timeline_start = strike_times[i][0].split("T")
-                data_dict = {
-                    "id": i,
-                    "content": f"{lightning_strikes[i]['mask'][0]} @ {timeline_start[1]}",
-                    "start": strike_times[i][0],
-                }
-                if i > max_calendar_items-1:
-                    st.warning(f"Only displaying maximum of {max_calendar_items} items")
-                    break
-                items.append(data_dict)
-        
-        from streamlit_timeline import st_timeline
-
-        options = {"cluster": True, "snap": True, "stack": False}
-        if start_date and end_date:
-            options["min"] = start_date.strftime('%Y-%m-%d')
-            options["max"] = end_date.strftime('%Y-%m-%d')
-
-        timeline = st_timeline(items, groups=[], options=options, height="150px")
-        print(timeline)
-        if timeline:
-            index: int = timeline["id"]
-            data_result: pd.DataFrame = lightning_strikes[index]
-            timeline_start = timeline["start"].split("T")
-
-            st.header(f"Lightning strike for mask `{data_result['mask'][0]}` on `{timeline_start[0]}` at `{timeline_start[1]}`")
-
-            col1, col2 = st.columns(2)
-
-            # Display the parsed DataFrame
-            col2.write("Parsed Data:")
-            col2.dataframe(dp.color_df(data_result, 'mask'))
-            
-            # Option to download the DataFrame as a CSV
-            csv_output = data_result.to_csv(index=False)
-            st.download_button(
-                label="Download CSV",
-                data=csv_output,
-                file_name=f"{os.path.splitext(selected_file)[0]}.csv",
-                mime="text/csv"
-            )
-
-            # Displaying figure
-            fig = None
-            with st.spinner('Indexing Topography Data...'):
-                # Plot 3D scatter
-                fig = dp.get_interactive_3d_figure(data_result, 'mask', do_topography=do_topography_mapping)
-
-
-            # Display the 3D plot in Streamlit
-            if fig:
-                col1.plotly_chart(fig)
 
 
 def save_uploaded_file(uploaded_file):

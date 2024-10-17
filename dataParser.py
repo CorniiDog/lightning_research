@@ -9,6 +9,8 @@ import geopandas as gpd
 import rasterio
 from pyproj import Transformer
 import math
+import streamlit as st
+
 from typing import (
     Dict,
     Callable,
@@ -795,6 +797,7 @@ min_points_for_lightning = 2
 The minimum number of points required for a lightning strike identification
 """
 
+@st.cache_data
 def get_strikes(df: pd.DataFrame) -> Tuple[List[pd.DataFrame], List[Tuple[str, str]]]:
     """
     
@@ -831,6 +834,9 @@ def get_strikes(df: pd.DataFrame) -> Tuple[List[pd.DataFrame], List[Tuple[str, s
 
                 # Iterate over rows in the existing strike DataFrame
                 for k, other_row in lightning_strikes[j].iterrows():
+                    if mask_value != other_row['mask']:
+                        break
+
                     time2 = other_row['unix']
                     delta_t = time1 - time2
 
@@ -838,7 +844,6 @@ def get_strikes(df: pd.DataFrame) -> Tuple[List[pd.DataFrame], List[Tuple[str, s
                     if np.abs(delta_t) > lightning_max_strike_time:
                         continue
 
-                    
 
                     x2 = other_row['x(m)']
                     y2 = other_row['y(m)']
