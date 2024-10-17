@@ -667,23 +667,26 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, do_topography=T
             (gdf['longitude'] >= params['west']) &
             (gdf['longitude'] <= params['east'])
         ].copy()  # Added .copy() here
-        
-        # Safely assign a new column using .loc to avoid the warning
-        filtered_gdf.loc[:, 'altitude'] = 0
 
-        # Add cities as Scatter3d
-        fig.add_trace(go.Scatter3d(
-            x=filtered_gdf['longitude'],
-            y=filtered_gdf['latitude'],
-            z=filtered_gdf['altitude'],
-            mode='text',
-            name='Populated Places',
-            hoverinfo='text',
-            hovertext=filtered_gdf['NAME'],
-            text = filtered_gdf['NAME'],
-            showlegend=False
+        if not filtered_gdf.empty:
+            filtered_gdf.reset_index(drop=True, inplace=True)
 
-        ))
+            # Safely assign a new column using .loc to avoid the warning
+            filtered_gdf.loc[:, 'altitude'] = 0
+
+            # Add cities as Scatter3d
+            fig.add_trace(go.Scatter3d(
+                x=filtered_gdf['longitude'],
+                y=filtered_gdf['latitude'],
+                z=filtered_gdf['altitude'],
+                mode='text',
+                name='Populated Places',
+                hoverinfo='text',
+                hovertext=filtered_gdf['NAME'],
+                text = filtered_gdf['NAME'],
+                showlegend=False
+
+            ))
 
 
 
