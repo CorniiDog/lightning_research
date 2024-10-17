@@ -210,11 +210,12 @@ def main():
 
             col1, col2 = st.columns(2)
 
-            fig = dp.get_interactive_2d_figure(data_result, 'mask', do_topography=do_topography_mapping, lat=False, lon=True, alt=True)
-            col1.plotly_chart(fig)
+            lonalt_fig = dp.get_3_axis_plot(data_result, 'mask')
+            st.plotly_chart(lonalt_fig)
 
-            fig = dp.get_interactive_2d_figure(data_result, 'mask', do_topography=do_topography_mapping, lat=True, lon=True, alt=False)
-            col1.plotly_chart(fig)
+            
+
+            
 
     else: # No lightning data
         st.warning("Data too restrained. Modify parameters on left sidebar.")

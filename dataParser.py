@@ -1,6 +1,7 @@
 import pandas as pd
 import os
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from datetime import datetime, timedelta, timezone
 import numpy as np
 import colorsys, pickle
@@ -718,8 +719,8 @@ def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, do_topography=T
                     showlegend=False
                 ))
         fig.update_layout(
-        xaxis=dict(range=[min(params['west'], np.min(df['lon'])), max(params['east'], np.max(df['lon']))]),
-        yaxis=dict(range=[min(params['south'], np.min(df['lat'])), max(params['north'], np.max(df['lon']))])
+            xaxis=dict(range=[min(params['west'], np.min(df['lon'])), max(params['east'], np.max(df['lon']))]),
+            yaxis=dict(range=[min(params['south'], np.min(df['lat'])), max(params['north'], np.max(df['lon']))])
         )
 
     elif {'lon', 'alt(m)'} == set(axes):
@@ -767,6 +768,46 @@ def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, do_topography=T
     )
 
     return fig
+
+def get_3_axis_plot(df:pd.DataFrame, identifier:str, do_topography=True):
+    lonalt_fig = get_interactive_2d_figure(df, identifier, do_topography=do_topography, lat=False, lon=True, alt=True)
+    latlon_fig = get_interactive_2d_figure(df, identifier, do_topography=do_topography, lat=True, lon=True, alt=False)
+    latalt_fig = get_interactive_2d_figure(df, identifier, do_topography=do_topography, lat=True, lon=False, alt=True)
+
+    fig_combined = make_subplots(
+        rows=2, cols=2,
+        specs=[[{"colspan": 2}, None], [{"type": "scatter"}, {"type": "scatter"}]],  # Empty cell in the top-right
+        subplot_titles=("Longitude vs Altitude", "Latitude vs Longitude", "Altitude vs Latitude"),
+        vertical_spacing=0.05, horizontal_spacing=0.05
+    )
+
+    # Add the traces from fig1 (Latitude vs Longitude) into the combined plot
+    for trace in latlon_fig.data:
+        fig_combined.add_trace(trace, row=2, col=1)
+
+    # Add the traces from fig2 (Longitude vs Altitude) into the combined plot
+    for trace in lonalt_fig.data:
+        fig_combined.add_trace(trace, row=1, col=1)
+
+    # Add the traces from fig3 (Altitude vs Latitude) into the combined plot
+    for trace in latalt_fig.data:
+        fig_combined.add_trace(trace, row=2, col=2)
+
+    # Update axis titles
+    fig_combined.update_xaxes(title_text="Longitude", row=2, col=1)
+    fig_combined.update_yaxes(title_text="Latitude", row=2, col=1)
+
+    fig_combined.update_xaxes(title_text="Longitude", row=1, col=1)
+    fig_combined.update_yaxes(title_text="Altitude (m)", row=1, col=1)
+
+    fig_combined.update_xaxes(title_text="Altitude (m)", row=2, col=2)
+    fig_combined.update_yaxes(title_text="Latitude", row=2, col=2)
+
+    # Update the layout
+    fig_combined.update_layout(height=800, width=800, title_text="Combined Plot of Lightning Strikes")
+
+    return fig_combined
+
     
 
 def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, do_topography=True):
