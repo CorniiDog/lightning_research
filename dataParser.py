@@ -5,11 +5,14 @@ from plotly.subplots import make_subplots
 from datetime import datetime, timedelta, timezone
 import numpy as np
 import colorsys, pickle
-from bmi_topography import Topography
 import geopandas as gpd
 import rasterio
+import xarray, requests
 from pyproj import Transformer
 import math
+import rioxarray
+import xarray as xr
+import time
 import streamlit as st
 
 from typing import (
@@ -28,15 +31,6 @@ X-axis points from the center of the Earth to the intersection of the Equator an
 
 Y-axis points from the center of the Earth to the intersection of the Equator and 90° East longitude.
 """
-
-
-params = Topography.DEFAULT.copy()
-params["south"] = 25.84  # Modify these coordinates for your area of interest (Texas)
-params["north"] = 36.50
-params["west"] = -106.65
-params["east"] = -93.51
-params['dem_type'] = 'SRTMGL3'
-params['cache_dir'] = '~/.bmi_topography'
 
 # Essential functions to use
 count_required = []
@@ -425,86 +419,98 @@ def color_df(df: pd.DataFrame, identifier: str) -> pd.DataFrame:
     # Apply the color function to entire rows and return the styled DataFrame
     return df.style.apply(color_row, axis=1)
 
-def cache_topography_data(pickle_file, params) -> pd.DataFrame:
-    # Check if the pickle file already exists
-    if os.path.exists(pickle_file):
-        print(f"Loading data from cache: {pickle_file}")
-        with open(pickle_file, 'rb') as f:
-            return pickle.load(f)
+
+def remove_empty_files_in_directory(directory):
+    # Loop through all files in the given directory
+    if not os.path.exists(directory):
+        return
+    for filename in os.listdir(directory):
+        file_path = os.path.join(directory, filename)
+
+        # Check if the item is a file (not a directory) and if its size is 0 bytes
+        if os.path.isfile(file_path) and os.path.getsize(file_path) < 100:
+            print(f"Removing empty file: {file_path}")
+            os.remove(file_path)
+
+demtypes = [
+    "USGS30m",
+    "SRTMGL1",
+    "AW3D30",
+    "NASADEM",
+    "SRTMGL3",
+    "COP30",
+]
+
+
+def get_opentopography_data(south, north, west, east, tif_file, demtype_index=0):
+    """
+    Fetch topography data from OpenTopography and load it as an xarray DataArray.
+    
+    :param south: Southern latitude of the bounding box
+    :param north: Northern latitude of the bounding box
+    :param west: Western longitude of the bounding box
+    :param east: Eastern longitude of the bounding box
+    :param demtype: Type of DEM data (default is SRTMGL3)
+    :return: xarray DataArray containing the topography data
+    """
+    if demtype_index >= len(demtypes):
+        return None
+
+    # Get the API key from the environment variable
+    api_key = os.getenv('OPENTOPOGRAPHY_API_KEY')
+
+    if not api_key:
+        raise ValueError("OPENTOPOGRAPHY_API_KEY environment variable is not set.")
+
+    # Construct the request URL
+    dem = demtypes[demtype_index]
+
+    if dem == "USGS30m" or dem == "USGS10m":
+        url = f"https://portal.opentopography.org/API/usgsdem?datasetName={dem}&south={south}&north={north}&west={west}&east={east}&outputFormat=GTiff&API_Key={api_key}"
+    else:
+        url = f"https://portal.opentopography.org/API/globaldem?demtype={dem}&south={south}&north={north}&west={west}&east={east}&outputFormat=GTiff&API_Key={api_key}"
+
+    with st.spinner(text=f"Retreiving chunk data from: `{dem}`"):
+        # Send the GET request to OpenTopography API
+        response = requests.get(url)
+
+    # Check for successful response
+    if response.status_code == 200:
+        with open(tif_file, "wb") as f:
+            f.write(response.content)
+        
+        if os.path.exists(tif_file):
+            # Load the file as an xarray DataArray using rioxarray
+            data_array = rioxarray.open_rasterio(tif_file)
+        
+            return data_array
+
+    else: # No data for the designated chunk or error
+        with st.spinner(f"No topography data found for region or issue with `{dem}`, trying different data"):
+            time.sleep(2)
+            topography_data = get_opentopography_data(south, north, west, east, tif_file, demtype_index+1)
+        return topography_data
+
+def cache_topography_data(tif_file, params, tries = 0) -> xarray.DataArray | None:
+    if os.path.exists(tif_file):
+        print(f"Loading data from cache: {tif_file}")
+        result = rioxarray.open_rasterio(tif_file)
+        
+        if result is None:
+            if tries > 5:
+                return None
+            os.remove(tif_file)
+            return cache_topography_data(tif_file, params, tries+1)
+        
+        return result
     else:
         # Fetch the topography data if the pickle file does not exist
-        with st.spinner("Fetching new topography data from OpenTopography..."):
-            print("Fetching new topography data from OpenTopography...")
-            topo_data = Topography(**params)
-            topo_data.fetch()  # Download the data
-            da = topo_data.load()  # Load into xarray DataArray
-
-        # Save the data to a pickle file for future use
-        with open(pickle_file, 'wb') as f:
-            pickle.dump(da, f)
-        print(f"Data cached as: {pickle_file}")
-        return da
-
-def get_tile_indices(south: float, north: float, west: float, east: float, tile_size: float = 1.0) -> List[Tuple[int, int]]:
-    """
-    Calculate the list of tile indices that intersect with the given bounding box.
-
-    :param south: Southern latitude boundary
-    :param north: Northern latitude boundary
-    :param west: Western longitude boundary
-    :param east: Eastern longitude boundary
-    :param tile_size: Size of each tile in degrees (default is 1°)
-    :return: List of tuples representing tile indices (min_lat, min_lon)
-    """
-    tiles = []
-    lat_start = int(np.floor(south / tile_size) * tile_size)
-    lat_end = int(np.floor(north / tile_size) * tile_size)
-    lon_start = int(np.floor(west / tile_size) * tile_size)
-    lon_end = int(np.floor(east / tile_size) * tile_size)
-
-    for lat in range(lat_start, lat_end + 1, int(tile_size)):
-        for lon in range(lon_start, lon_end + 1, int(tile_size)):
-            tiles.append((lat, lon))
-    return tiles
-
-def cache_topography_tile(pickle_dir: str, tile: Tuple[int, int], params: Dict[str, Any]) -> rasterio.DatasetReader:
-    """
-    Cache a single topography tile. Download and save it if not already cached.
-
-    :param pickle_dir: Directory where pickle files are stored
-    :param tile: Tuple representing the tile indices (min_lat, min_lon)
-    :param params: Parameters for fetching topography data
-    :return: Rasterio DatasetReader object for the tile
-    """
-    min_lat, min_lon = tile
-    tile_key = f"tile_{min_lat}_{min_lon}.pkl"
-    tile_path = os.path.join(pickle_dir, tile_key)
-
-    if os.path.exists(tile_path):
-        print(f"Loading tile from cache: {tile_key}")
-        with open(tile_path, 'rb') as f:
-            tile_data: rasterio.DatasetReader = pickle.load(f)
-    else:
-        print(f"Fetching new topography data for tile: {tile_key}")
-        # Define the tile-specific bounding box
-        tile_params = params.copy()
-        tile_params["south"] = min_lat
-        tile_params["north"] = min_lat + 1
-        tile_params["west"] = min_lon
-        tile_params["east"] = min_lon + 1
-
-        # Initialize and fetch topography data for the tile
-        topo_data = Topography(**tile_params)
-        topo_data.fetch()  # Download the data
-        tile_data = topo_data.load()  # Load into xarray DataArray
-
-        # Save the tile data to cache
-        with open(tile_path, 'wb') as f:
-            pickle.dump(tile_data, f)
-        print(f"Tile cached as: {tile_path}")
-
-    return tile_data
-
+        with st.spinner("Fetching new data from OpenTopography..."):
+            print("Fetching new data from OpenTopography...")
+            # topo_data = Topography(**params)
+            # topo_data.fetch()  # Download the data
+            # da = topo_data.load()  # Load into xarray DataArray
+            return get_opentopography_data(params['south'], params['north'], params['west'], params['east'], tif_file)
 
 cities_file: str | None = None
 """
@@ -515,7 +521,7 @@ For example: `cities_file = "ne_110m_populated_places/ne_110m_populated_places.s
 You can download data here: https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-populated-places/
 """
 
-chunk_size = 2.0
+chunk_size = 8.0
 """
 The chunk size to chunkify the topography data (i.e. `2.0` indicates chunks of lat/lon 2x2 chunks)
 """
@@ -528,56 +534,33 @@ def align_up(x: float, base: float = 1.0) -> int:
     """Aligns the number up to the nearest multiple of base and returns an integer."""
     return int(math.ceil(x / base) * base)
 
-def generate_integer_chunks(
-    south: float, north: float, west: float, east: float, chunk_size: float = 2.0
-) -> Dict[str, int]:
-    """
-    Generates non-overlapping chunks aligned to integer boundaries.
+def generate_integer_chunks(params: Dict[str, float]) -> xarray.DataArray | None:
+    
+    # Align lat/lon boundaries to multiples of chunk_size
+    lat_min = align_down(params["south"], base=chunk_size)
+    lat_max = align_up(params["north"], base=chunk_size)
+    lon_min = align_down(params["west"], base=chunk_size)
+    lon_max = align_up(params["east"], base=chunk_size)
 
-    :param south: Southern latitude boundary
-    :param north: Northern latitude boundary
-    :param west: Western longitude boundary
-    :param east: Eastern longitude boundary
-    :param chunk_size: Size of each chunk in degrees (default is 2.0)
-    :yield: Dictionary containing chunk boundaries as integers
-    """
-    # Align overall boundaries to integer degrees
-    aligned_south = align_down(south, base=1.0)
-    aligned_north = align_up(north, base=1.0)
-    aligned_west = align_down(west, base=1.0)
-    aligned_east = align_up(east, base=1.0)
+    # Loop through the latitude and longitude ranges using numpy's arange for floats
+    for s in np.arange(lat_min, lat_max, chunk_size):
+        for w in np.arange(lon_min, lon_max, chunk_size):
+            # Ensure the chunk does not exceed the northern and eastern boundaries
+            n = s + chunk_size
+            e = w + chunk_size
+            
+            # Create a unique filename for caching
+            tif_file = f"topography_cache/topography_{s}_{n}_{w}_{e}.tif"
 
-    # Iterate over latitude in steps of chunk_size
-    lat_start = aligned_south
-    while lat_start < aligned_north:
-        chunk_south = lat_start
-        chunk_north = lat_start + chunk_size
-        # Ensure the northern boundary does not exceed the original limit
-        if chunk_north > north:
-            chunk_north = align_up(north, base=1.0)
-        else:
-            chunk_north = int(chunk_north)  # Ensure integer
+            # Define the params for the current chunk
+            p2 = params.copy()
+            p2['north'] = float(n)
+            p2['south'] = float(s)
+            p2['east'] = float(e)
+            p2['west'] = float(w)
 
-        # Iterate over longitude in steps of chunk_size
-        lon_start = aligned_west
-        while lon_start < aligned_east:
-            chunk_west = lon_start
-            chunk_east = lon_start + chunk_size
-            # Ensure the eastern boundary does not exceed the original limit
-            if chunk_east > east:
-                chunk_east = align_up(east, base=1.0)
-            else:
-                chunk_east = int(chunk_east)  # Ensure integer
+            yield cache_topography_data(tif_file, p2)
 
-            yield {
-                'south': chunk_south,
-                'north': chunk_north,
-                'west': chunk_west,
-                'east': chunk_east
-            }
-
-            lon_start += chunk_size
-        lat_start += chunk_size
 
 downsampling_factor = 10
 """
@@ -586,17 +569,15 @@ The downsampling factor for the topography data (`10` implies we only accept 1 e
 It's meant to act as an optomization technique
 """
 
-def add_topography(fig, df:pd.DataFrame, lat=True, lon=True, alt=True):
+def get_params(df:pd.DataFrame):
     lowest_lon = None
-    largest_lon = None
+    highest_lon = None
+    
     for longitude in df['lon']:
-        if largest_lon == None or longitude > largest_lon:
-            largest_lon = longitude
+        if highest_lon == None or longitude > highest_lon:
+            highest_lon = longitude
         if lowest_lon == None or longitude < lowest_lon:
             lowest_lon = longitude
-    
-    params["west"] = lowest_lon - 1
-    params["east"] = largest_lon + 1
 
     lowest_lat = None
     highest_lat = None
@@ -606,15 +587,19 @@ def add_topography(fig, df:pd.DataFrame, lat=True, lon=True, alt=True):
         if lowest_lat == None or latitude < lowest_lat:
             lowest_lat = latitude
 
-    params["south"] = lowest_lat - 1
-    params["north"] = highest_lat + 1
-    
-    for idx, chunk in enumerate(generate_integer_chunks(params['south'], params['north'], params['west'], params['east'], chunk_size), start=1):
-        bbox_key = f"{chunk['south']}_{chunk['north']}_{chunk['west']}_{chunk['east']}"
-        pickle_file = f"topography_cache/{bbox_key}.pkl"
+    params = {
+        "north": highest_lat + 0.0,
+        "south": lowest_lat - 0.0,
+        "west": lowest_lon - 0.0,
+        "east": highest_lon + 0.0,
+    }
 
-        # Step 1: Cache or load the topography data
-        da = cache_topography_data(pickle_file, params)
+    return params
+
+def add_topography(fig, df:pd.DataFrame, lat=True, lon=True, alt=True):
+    params = get_params(df)
+    
+    for da in generate_integer_chunks(params):
 
         # Step 2: Convert the DataArray to a NumPy array for the topography surface plot
         elevation_data = da.values.squeeze()
@@ -629,23 +614,39 @@ def add_topography(fig, df:pd.DataFrame, lat=True, lon=True, alt=True):
         latitudes_downsampled = latitudes[::downsampling_factor]
         longitudes_downsampled = longitudes[::downsampling_factor]
 
+        # Step 1: Find indices of latitudes within the bounds
+        lat_mask = (latitudes_downsampled >= params['south']) & (latitudes_downsampled <= params['north'])
+
+        # Step 2: Find indices of longitudes within the bounds
+        lon_mask = (longitudes_downsampled >= params['west']) & (longitudes_downsampled <= params['east'])
+
+        st.write(params)
+
+        # Step 3: Filter the latitude, longitude, and elevation arrays
+        # Apply the latitude and longitude masks to create filtered arrays
+
+        # Using np.ix_ to create a proper selection grid for 2D arrays
+        filtered_elevation = elevation_data_downsampled[np.ix_(lat_mask, lon_mask)]
+        filtered_latitudes = latitudes_downsampled[lat_mask]
+        filtered_longitudes = longitudes_downsampled[lon_mask]
+
         if lat and lon and alt:
             fig.add_trace(go.Surface(
-                z=elevation_data_downsampled,
-                x=longitudes_downsampled,
-                y=latitudes_downsampled,
+                z=filtered_elevation,
+                x=filtered_longitudes,
+                y=filtered_latitudes,
                 colorscale='Viridis',
-                opacity=0.7,
+                opacity=0.9,
                 showscale=True
             ))
         elif lat and lon and not alt:
             fig.add_trace(go.Contour(
-                z=elevation_data_downsampled,
-                x=longitudes_downsampled,
-                y=latitudes_downsampled,
+                z=filtered_elevation,
+                x=filtered_longitudes,
+                y=filtered_latitudes,
                 colorscale='Viridis',
                 showscale=True,
-                opacity=0.7,
+                opacity=0.9,
                 contours=dict(
                     coloring='heatmap',
                     showlines=False,
@@ -683,8 +684,13 @@ def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, do_topography=T
 
     # Initialize figure
     fig = go.Figure()
+    
+    params = get_params(df)
 
-    if {'lon', 'lat'} == set(axes):
+    lon_range = [params['west'], params['east']]
+    lat_range = [params['south'], params['north']]
+
+    if lat and lon:
         # If do_topography is True, plot the topography data
         if do_topography:
             fig = add_topography(fig, df, lat, lon, alt)
@@ -698,10 +704,10 @@ def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, do_topography=T
             gdf['longitude'] = gdf.geometry.x
             # Filter the GeoDataFrame based on the bounding box and create a copy
             filtered_gdf = gdf[
-                (gdf['latitude'] >= params['south']) &
-                (gdf['latitude'] <= params['north']) &
-                (gdf['longitude'] >= params['west']) &
-                (gdf['longitude'] <= params['east'])
+                (gdf['latitude'] >= lat_range[0]) &
+                (gdf['latitude'] <= lat_range[1]) &
+                (gdf['longitude'] >= lon_range[0]) &
+                (gdf['longitude'] <= lon_range[1])
             ].copy()
 
             if not filtered_gdf.empty:
@@ -718,21 +724,13 @@ def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, do_topography=T
                     marker=dict(size=8, color='red'),
                     showlegend=False
                 ))
-        fig.update_layout(
-            xaxis=dict(range=[min(params['west'], np.min(df['lon'])), max(params['east'], np.max(df['lon']))]),
-            yaxis=dict(range=[min(params['south'], np.min(df['lat'])), max(params['north'], np.max(df['lon']))])
-        )
+        fig.update_xaxes(range=lon_range, fixedrange=True)
+        fig.update_yaxes(range=lat_range, fixedrange=True)
 
-    elif {'lon', 'alt(m)'} == set(axes):
-        fig.update_layout(
-            xaxis=dict(range=[min(params['west'], np.min(df['lon'])), max(params['east'], np.max(df['lon']))])
-        )
-    elif {'alt(m)', 'lat'} == set(axes):
-        fig.update_layout(
-            yaxis=dict(range=[min(params['south'], np.min(df['lat'])), max(params['north'], np.max(df['lon']))])
-        )
-
-    # Generate colors for the data points
+    elif lon and alt:
+        fig.update_xaxes(range=lon_range, fixedrange=True)
+    elif lat and alt:
+        fig.update_yaxes(range=lat_range, fixedrange=True)    # Generate colors for the data points
     unique_values = df[identifier].unique()
     value_colors = {val: color for val, color in zip(unique_values, generate_colors(len(unique_values)))}
 
@@ -740,7 +738,7 @@ def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, do_topography=T
     max_points = 10000  # Adjust based on performance needs
     if len(df) > max_points:
         df_sampled = df.sample(n=max_points, random_state=42)
-        print(f"Sampling {max_points} out of {len(df)} data points for plotting.")
+        st.warning(f"Sampling {max_points} out of {len(df)} data points for plotting.")
     else:
         df_sampled = df
 
@@ -775,10 +773,9 @@ def get_3_axis_plot(df:pd.DataFrame, identifier:str, do_topography=True):
     latalt_fig = get_interactive_2d_figure(df, identifier, do_topography=do_topography, lat=True, lon=False, alt=True)
 
     fig_combined = make_subplots(
-        rows=2, cols=2,
-        specs=[[{"colspan": 2}, None], [{"type": "scatter"}, {"type": "scatter"}]],  # Empty cell in the top-right
-        subplot_titles=("Longitude vs Altitude", "Latitude vs Longitude", "Altitude vs Latitude"),
-        vertical_spacing=0.05, horizontal_spacing=0.05
+        rows=3, cols=3,
+        specs=[[{"type": "scatter", "colspan": 2}, None, None], [{"type": "scatter", "colspan": 2, "rowspan": 2}, None, {"type": "scatter", "rowspan": 2}], [None, None, None]],  # Empty cell in the top-right
+        vertical_spacing=0.2, horizontal_spacing=0.2
     )
 
     # Add the traces from fig1 (Latitude vs Longitude) into the combined plot
@@ -791,7 +788,7 @@ def get_3_axis_plot(df:pd.DataFrame, identifier:str, do_topography=True):
 
     # Add the traces from fig3 (Altitude vs Latitude) into the combined plot
     for trace in latalt_fig.data:
-        fig_combined.add_trace(trace, row=2, col=2)
+        fig_combined.add_trace(trace, row=2, col=3)
 
     # Update axis titles
     fig_combined.update_xaxes(title_text="Longitude", row=2, col=1)
@@ -800,8 +797,8 @@ def get_3_axis_plot(df:pd.DataFrame, identifier:str, do_topography=True):
     fig_combined.update_xaxes(title_text="Longitude", row=1, col=1)
     fig_combined.update_yaxes(title_text="Altitude (m)", row=1, col=1)
 
-    fig_combined.update_xaxes(title_text="Altitude (m)", row=2, col=2)
-    fig_combined.update_yaxes(title_text="Latitude", row=2, col=2)
+    fig_combined.update_xaxes(title_text="Altitude (m)", row=2, col=3)
+    fig_combined.update_yaxes(title_text="Latitude", row=2, col=3)
 
     # Update the layout
     fig_combined.update_layout(height=800, width=800, title_text="Combined Plot of Lightning Strikes")
@@ -827,6 +824,7 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, do_topography=T
 
     os.makedirs("topography_cache", exist_ok=True)  # Ensure cache directory exists
 
+    params = get_params(df)
 
     if do_topography:
         fig = add_topography(fig, df)
@@ -919,13 +917,13 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, do_topography=T
             title='Longitude',
             gridcolor='lightgray',  # Lighter color for gridlines
             zerolinecolor='lightgray',  # Lighter color for axis lines
-            range=[min(params['west'], np.min(df['lon'])), max(params['east'], np.max(df['lon']))]
+            range=[params['west'], params['east']]
         ),
         yaxis=dict(
             title='Latitude',
             gridcolor='lightgray',  # Lighter color for gridlines
             zerolinecolor='lightgray',  # Lighter color for axis lines
-            range=[min(params['south'], np.min(df['lat'])), max(params['north'], np.max(df['lon']))]
+            range=[params['south'], params['north']]
         ),
         zaxis=dict(
             title='Altitude (m)',

@@ -116,7 +116,7 @@ with st.sidebar.expander(label="Calendar Parameters", expanded=True):
 with st.sidebar.expander("Topography Parameters", expanded=True):
     do_topography_mapping: int = st.checkbox(label="Enable Topography", value=False)
     dp.downsampling_factor = st.number_input(
-        "Topography Downsampling (Size Reduction) Factor", 1, 100, 20
+        "Topography Downsampling (Size Reduction) Factor", 1, 100, 1
     )
 
 # Update the dp.filters and dp.count_required dynamically
@@ -210,7 +210,7 @@ def main():
 
             col1, col2 = st.columns(2)
 
-            lonalt_fig = dp.get_3_axis_plot(data_result, 'mask')
+            lonalt_fig = dp.get_3_axis_plot(data_result, 'mask', do_topography=do_topography_mapping)
             st.plotly_chart(lonalt_fig)
 
             
