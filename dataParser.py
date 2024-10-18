@@ -432,14 +432,14 @@ def remove_empty_files_in_directory(directory):
             print(f"Removing empty file: {file_path}")
             os.remove(file_path)
 
-demtypes = [
-    "USGS30m",
-    "SRTMGL1",
-    "AW3D30",
-    "NASADEM",
-    "SRTMGL3",
-    "COP30",
-]
+demtypes = {
+    "SRTMGL1": "SRTM GL1 30m",
+    "AW3D30": "ALOS World 3D 30m",
+    "NASADEM": "NASADEM Global DEM",
+    "SRTMGL3": "SRTM GL3 90m",
+    "COP30": "Copernicus Global DSM 30m",
+    "USGS30m": "U.S. Geological Survey 3DEP raster dataset"
+}
 
 
 def get_opentopography_data(south, north, west, east, tif_file, demtype_index=0):
@@ -463,14 +463,14 @@ def get_opentopography_data(south, north, west, east, tif_file, demtype_index=0)
         raise ValueError("OPENTOPOGRAPHY_API_KEY environment variable is not set.")
 
     # Construct the request URL
-    dem = demtypes[demtype_index]
+    dem = demtypes.keys()[demtype_index]
 
     if dem == "USGS30m" or dem == "USGS10m":
         url = f"https://portal.opentopography.org/API/usgsdem?datasetName={dem}&south={south}&north={north}&west={west}&east={east}&outputFormat=GTiff&API_Key={api_key}"
     else:
         url = f"https://portal.opentopography.org/API/globaldem?demtype={dem}&south={south}&north={north}&west={west}&east={east}&outputFormat=GTiff&API_Key={api_key}"
 
-    with st.spinner(text=f"Retreiving chunk data from: `{dem}`"):
+    with st.spinner(text=f"Retreiving chunk data from: `{dem}: {demtypes[dem]}`"):
         # Send the GET request to OpenTopography API
         response = requests.get(url)
 
@@ -486,7 +486,7 @@ def get_opentopography_data(south, north, west, east, tif_file, demtype_index=0)
             return data_array
 
     else: # No data for the designated chunk or error
-        with st.spinner(f"No topography data found for region or issue with `{dem}`, trying different data"):
+        with st.spinner(f"No topography data found for region or issue with `{dem}: {demtypes[dem]}`, trying different data"):
             time.sleep(2)
             topography_data = get_opentopography_data(south, north, west, east, tif_file, demtype_index+1)
         return topography_data
@@ -521,7 +521,7 @@ For example: `cities_file = "ne_110m_populated_places/ne_110m_populated_places.s
 You can download data here: https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-populated-places/
 """
 
-chunk_size = 8.0
+chunk_size = 4.0
 """
 The chunk size to chunkify the topography data (i.e. `2.0` indicates chunks of lat/lon 2x2 chunks)
 """
@@ -569,6 +569,11 @@ The downsampling factor for the topography data (`10` implies we only accept 1 e
 It's meant to act as an optomization technique
 """
 
+buffer_factor = 0.0
+"""
+The buffer overhead factor whenever displaying topography plot data
+"""
+
 def get_params(df:pd.DataFrame):
     lowest_lon = None
     highest_lon = None
@@ -588,10 +593,10 @@ def get_params(df:pd.DataFrame):
             lowest_lat = latitude
 
     params = {
-        "north": highest_lat + 0.0,
-        "south": lowest_lat - 0.0,
-        "west": lowest_lon - 0.0,
-        "east": highest_lon + 0.0,
+        "north": highest_lat + buffer_factor,
+        "south": lowest_lat - buffer_factor,
+        "west": lowest_lon - buffer_factor,
+        "east": highest_lon + buffer_factor,
     }
 
     return params
@@ -726,11 +731,17 @@ def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, do_topography=T
                 ))
         fig.update_xaxes(range=lon_range, fixedrange=True)
         fig.update_yaxes(range=lat_range, fixedrange=True)
+        fig.add_trace(go.Scatter(x=[lon_range[0], lon_range[0], lon_range[1], lon_range[1]], y=[lat_range[0], lat_range[1], lat_range[0], lat_range[1]], mode='markers',
+                         marker=dict(opacity=0), showlegend=False))  # Invisible points
 
     elif lon and alt:
         fig.update_xaxes(range=lon_range, fixedrange=True)
+        fig.add_trace(go.Scatter(x=lon_range, y=[0, 0], mode='markers',
+                         marker=dict(opacity=0), showlegend=False))  # Invisible points
     elif lat and alt:
         fig.update_yaxes(range=lat_range, fixedrange=True)    # Generate colors for the data points
+        fig.add_trace(go.Scatter(x=[0, 0], y=lat_range, mode='markers',
+                         marker=dict(opacity=0), showlegend=False))  # Invisible points
     unique_values = df[identifier].unique()
     value_colors = {val: color for val, color in zip(unique_values, generate_colors(len(unique_values)))}
 
@@ -751,7 +762,7 @@ def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, do_topography=T
             x=subset[x_axis],
             y=subset[y_axis],
             mode='markers',
-            marker=dict(size=8, color=color, opacity=0.7),
+            marker=dict(size=8, color=color, opacity=1.0),
             name=f'{identifier} {value}',
             showlegend=False
         ))
@@ -765,6 +776,10 @@ def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, do_topography=T
         legend_title=identifier
     )
 
+    fig.update_traces(marker=dict(size=12,
+                              line=dict(width=1,
+                                        color='white')),
+                  selector=dict(mode='markers'))
     return fig
 
 def get_3_axis_plot(df:pd.DataFrame, identifier:str, do_topography=True):
@@ -863,7 +878,8 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, do_topography=T
                 hoverinfo='text',
                 hovertext=filtered_gdf['NAME'],
                 text = filtered_gdf['NAME'],
-                showlegend=False
+                showlegend=False,
+                color="green"
 
             ))
 
@@ -884,6 +900,7 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, do_topography=T
     # Step 7: Overlay the lightning data (scatter points) on top of the topography surface
     for mask_value, color in value_colors.items():
         subset = df_sampled[df_sampled[identifier] == mask_value]  # Subset of data matching the current mask_value
+
         if subset.empty:
             continue  # Skip if no data for this mask_value
         fig.add_trace(go.Scatter3d(
@@ -894,22 +911,12 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, do_topography=T
             marker=dict(
                 size=5,
                 color=color,
-                opacity=0.9
+                opacity=1
             ),
             name=f'{identifier} {mask_value}',
             showlegend=False
         ))
 
-        # Draw lines between the masks
-        # fig.add_trace(go.Scatter3d(
-        #     x=subset['lon'],
-        #     y=subset['lat'],
-        #     z=subset['alt(m)'],
-        #     mode='lines',
-        #     line=dict(color=color, width=2),
-        #     name=f'{identifier} {mask_value} lines',
-        #     showlegend=False
-        # ))
 
     fig.update_layout(
     scene=dict(
@@ -934,6 +941,11 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, do_topography=T
     ),
     height=400,
     )
+
+    fig.update_traces(marker=dict(size=7,
+                              line=dict(width=1,
+                                        color='white')),
+                  selector=dict(mode='markers'))
 
     return fig
 

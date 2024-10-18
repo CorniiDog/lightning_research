@@ -116,8 +116,9 @@ with st.sidebar.expander(label="Calendar Parameters", expanded=True):
 with st.sidebar.expander("Topography Parameters", expanded=True):
     do_topography_mapping: int = st.checkbox(label="Enable Topography", value=False)
     dp.downsampling_factor = st.number_input(
-        "Topography Downsampling (Size Reduction) Factor", 1, 100, 1
+        "Topography Downsampling (Compression) Factor", 1, 100, 1
     )
+    dp.buffer_factor = st.number_input("Topography Overlap Buffer Size", 0.0, 2.0, 0.1)
 
 # Update the dp.filters and dp.count_required dynamically
 dp.filters = [
