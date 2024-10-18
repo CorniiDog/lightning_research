@@ -119,9 +119,9 @@ def main():
         now: datetime = datetime.now()
 
         start_date = st.date_input("Start Date", now - relativedelta(months=1))
-        dp.start_datetime = datetime(start_date.year, start_date.month, start_date.day)
+        start_datetime = datetime(start_date.year, start_date.month, start_date.day)
         end_date = st.date_input("End Date", now)
-        dp.end_datetime = datetime(end_date.year, end_date.month, end_date.day)
+        end_datetime = datetime(end_date.year, end_date.month, end_date.day)
 
         approved_files = selected_files
         if len(selected_files) == 0:
@@ -136,35 +136,38 @@ def main():
         mask_count_min: int = st.slider("Mask minimum occurances", 1, 10, 2)
 
     with st.sidebar.expander("Lightning Parameters", expanded=True):
-        dp.lightning_max_strike_time = st.number_input("Lightning maximum allowed strike time between points (s)", 0.0, 2.0, 0.15)
-        dp.lightning_max_strike_distance = st.number_input("Lightning maximum allowed strike distance between points (km)", 0.0, 100.0, 3.0) * 1000.0
-        dp.lightning_minimum_speed = st.number_input("Lightning minimum allowed speed between points (m/s)", 0.0, 299792458.0, 299792.458)
-        dp.min_points_for_lightning = mask_count_min
+        lightning_max_strike_time = st.number_input("Lightning maximum allowed strike time between points (s)", 0.0, 2.0, 0.15)
+        lightning_max_strike_distance = st.number_input("Lightning maximum allowed strike distance between points (km)", 0.0, 100.0, 3.0) * 1000.0
+        lightning_minimum_speed = st.number_input("Lightning minimum allowed speed between points (m/s)", 0.0, 299792458.0, 299792.458)
+        min_points_for_lightning = mask_count_min
 
-    with st.sidebar.expander(label="Calendar Parameters", expanded=True):
+    with st.sidebar.expander(label="Timeline Parameters", expanded=True):
         max_calendar_items: int = st.number_input(
             "Maximum Lightning Strikes To Display", 1, 10000, value=1000
         )
     with st.sidebar.expander("Topography Parameters", expanded=True):
         do_topography_mapping: int = st.checkbox(label="Enable Topography", value=False)
-        dp.downsampling_factor = st.number_input(
+        downsampling_factor = st.number_input(
             "Topography Downsampling (Compression) Factor", 1, 100, 1
         )
-        dp.buffer_factor = st.number_input("Topography Overlap Buffer Size", 0.0, 2.0, 0.1)
+        buffer_factor = st.number_input("Topography Overlap Buffer Size", 0.0, 2.0, 0.1)
+        
+        dp.interactive_3d_dot_size = st.slider("3D Graph Dot Size", 1, 15, 5)
+        dp.interactive_2d_dot_size = st.slider("2D Graph Dot Size", 1, 15, 8)
 
     # Update the dp.filters and dp.count_required dynamically
-    dp.filters = [
+    filters = [
         ["reduced chi^2", lambda chi: chi >= chi_min],
         ["alt(m)", lambda alt: km_max * 1000 >= alt >= km_min * 1000],
     ]
 
     if chi_max >= 0:
-        dp.filters.append(["reduced chi^2", lambda chi: chi <= chi_max])
+        filters.append(["reduced chi^2", lambda chi: chi <= chi_max])
 
     # This is a filtering for the count of a given component
     # I.e. there must be two instances of the same mask to be accepted, therefore
     # you can put ["mask", lambda count: count >= 2]
-    dp.count_required = [["mask", lambda count: count >= mask_count_min]]
+    count_required = [["mask", lambda count: count >= mask_count_min]]
     # main function that goes through the files
 
     lightning_strikes: List[pd.DataFrame] = []
@@ -176,10 +179,10 @@ def main():
             continue
 
         with st.spinner(f"Retreiving data for `{file}`"):
-            data_result: pd.DataFrame = dp.get_dataframe(lightning_data_folder, file)
+            data_result: pd.DataFrame = dp.get_dataframe(lightning_data_folder=lightning_data_folder, file_name=file, count_required=count_required, filters=filters, start_datetime=start_datetime, end_datetime=end_datetime)
 
         with st.spinner(f"Parsing lightning data for `{file}`"):
-            sub_strikes, substrike_times = dp.get_strikes(data_result)
+            sub_strikes, substrike_times = dp.get_strikes(df=data_result, lightning_max_strike_time=lightning_max_strike_time, lightning_max_strike_distance=lightning_max_strike_distance, lightning_minimum_speed=lightning_minimum_speed, min_points_for_lightning=min_points_for_lightning)
             lightning_strikes += sub_strikes # Concatenate to lightning_strikes
             strike_times += substrike_times
 
@@ -234,7 +237,7 @@ def main():
             fig = None
             with st.spinner('Indexing Topography Data...'):
                 # Plot 3D scatter
-                fig = dp.get_interactive_3d_figure(data_result, 'mask', do_topography=do_topography_mapping)
+                fig = dp.get_interactive_3d_figure(data_result, 'mask', buffer_factor, downsampling_factor, do_topography=do_topography_mapping)
 
 
             # Display the 3D plot in Streamlit
@@ -242,17 +245,18 @@ def main():
 
             col1, col2 = st.columns(2)
 
-            lonalt_fig = dp.get_3_axis_plot(data_result, 'mask', do_topography=do_topography_mapping)
+            lonalt_fig = dp.get_3_axis_plot(data_result, 'mask', buffer_factor, downsampling_factor, do_topography=do_topography_mapping)
             st.plotly_chart(lonalt_fig)
-
-            
-
-            
 
     else: # No lightning data
         st.warning("Data too restrained. Modify parameters on left sidebar.")
 
     st.divider()
+
+    if st.button("Clear Cache"):
+        st.write("Cache cleared")
+        st.cache_data.clear()
+        st.rerun()
 
 
 def save_uploaded_file(uploaded_file):

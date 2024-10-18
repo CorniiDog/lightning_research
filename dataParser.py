@@ -30,110 +30,16 @@ X-axis points from the center of the Earth to the intersection of the Equator an
 Y-axis points from the center of the Earth to the intersection of the Equator and 90° East longitude.
 """
 
-# Essential functions to use
-count_required = []
-"""
-This determines count instances rule.
 
-That is, if you provide a header, you provide a function for the count of items.
-
-For example, for `1 >= n >= 2` that requires instances to be between `1` and `2` occurances.
-
-Example:
-
-```
-count_required = [
-    ["mask", mask_count_rule]
-]
-```
-"""
-
-process_handling: Dict[str, Callable[[str], Any]] = {
-    "time (UT sec of day)": lambda my_str: float(my_str),  # Convert to float
-    "lat": lambda my_str: float(my_str),  # Convert to float
-    "lon": lambda my_str: float(my_str),  # Convert to float
-    "alt(m)": lambda my_str: float(my_str),  # Convert to float
-    "reduced chi^2": lambda my_str: float(my_str),  # Convert to float
-    "P(dBW)": lambda my_str: float(my_str), # Convert to float
-    "mask": lambda hex_str: int(hex_str, 16) # Convert the hex-code mask to decimal
-}
-"""
-Callback functions for processing based on header, for translation
-
-Dict[str, Callable[[str], Any]] 
-
-Basically means we are explicitly defining a dictionary named `process_handling`
-with the key being a string `str`, and the value being a Callable object 
-`Callable[[str], Any]` (basically a function). The callable function must have the 
-parameter be a string but the return value can be anything.
-
-Example:
-
-```
-process_handling: Dict[str, Callable[[str], Any]] = {
-    "time (UT sec of day)": str_to_float,
-    "lat": str_to_float,
-    "lon": str_to_float,
-    "alt(m)": str_to_float,
-    "reduced chi^2": str_to_float,
-    "P(dBW)": str_to_float,
-    "mask": str_hex_to_int
-}
-```
-"""
-
-# i.e. Data: time (UT sec of day), lat, lon, alt(m), reduced chi^2, P(dBW), mask
-data_header_startswith = "Data:"
-
-# After conversion process, you can now add callback functions for filters
-# Accepts the designated row if the function returns true
-#
-# List[str, Callable]
-# We are explicitly defining a list (or array) to the variable `filters`
-filters: List = []
-# Example:
-"""
-After conversion process, you can now add callback functions for filters
-Accepts the designated row if the function returns true
-
-List[str, Callable]
-We are explicitly defining a list (or array) to the variable `filters`
-Example:
-
-```
-filters: List = [
-    ["reduced chi^2", accept_chi_below],
-    ["alt(m)", data_above_20_km]
-]
-```
-"""
-
-# i.e. Data start time: 09/11/24 20:40:00
-start_time_indicator = "Data start time:"
-"""
-The text that indicates the start time of the data
-"""
-
-start_time_format = "%m/%d/%y %H:%M:%S"
-"""
-The formatting of the time upon reading the file, proceeding the text of `start_time_indicator`
-
-Default: `"%m/%d/%y %H:%M:%S"`
-"""
-
-# i.e. *** data ***
-data_body_start = "*** data ***"
-"""
-The indicator for the start of the data body (that is when the information begins)
-
-Default: `"*** data ***"`
-"""
-
-def get_start_date_label(lightning_data_folder: str, file_name: str) -> str:
+@st.cache_data
+def get_start_date_label(lightning_data_folder: str, file_name: str, start_time_indicator = "Data start time:", start_time_format = "%m/%d/%y %H:%M:%S") -> str:
     """
     This retreieves the start date of a `.dat` file
-
-    String date and time is format of `"%m/%d@%H:%M"`
+    :param lightning_data_folder: The folder of the lightning data
+    :param file_name: The name of the `.dat` file
+    :param start_time_indicator: The text that indicates the start time of the data
+    :param start_time_format: The formatting of the time upon reading the file, proceeding the text of `start_time_indicator`
+    :return: String date and time is format of `"%m/%d@%H:%M"`
     """
     # Parse through data and retreive the Pandas DataFrame
     with open(os.path.join(lightning_data_folder, file_name), "r") as f:
@@ -154,11 +60,13 @@ def get_start_date_label(lightning_data_folder: str, file_name: str) -> str:
 ######################################################################################################
 ## Helper functions below with processing and retreiving a nice-looking DataFrame
 ######################################################################################################
-def parse_file(f) -> pd.DataFrame:
+def parse_file(f, count_required: Tuple[str, Callable], filters: Tuple[str, Callable], data_body_start = "*** data ***", start_time_indicator = "Data start time:", start_time_format = "%m/%d/%y %H:%M:%S", data_header_startswith = "Data:", start_datetime: datetime = None, end_datetime: datetime = None) -> pd.DataFrame:
     """
     This processes the entire file and extracts a pandas DataFrame
 
     :param f: The file object to read from
+    :param data_body_start: The indicator for the start of the data body (that is when the information begins)
+    :param start_time_format: The formatting of the time upon reading the file, proceeding the text of `start_time_indicator`
     :return pd.DataFrame: A pandas dataframe resembling the data
     """
     # Data from the file
@@ -187,7 +95,7 @@ def parse_file(f) -> pd.DataFrame:
         # If headers are found, then we go through
         elif data_result == None:
             if line.strip() == data_body_start:
-                data_result = parse_data(f, data_headers, date_start)
+                data_result = parse_data(f, data_headers, date_start, count_required, filters, start_datetime, end_datetime)
 
         # Assume fully indented the data and break the for loop
         else:
@@ -211,6 +119,32 @@ The header for latitude
 Default: `lat`
 """
 
+process_handling: Dict[str, Callable[[str], Any]] = []
+"""
+Callback functions for processing based on header, for translation
+
+Dict[str, Callable[[str], Any]] 
+
+Basically means we are explicitly defining a dictionary named `process_handling`
+with the key being a string `str`, and the value being a Callable object 
+`Callable[[str], Any]` (basically a function). The callable function must have the 
+parameter be a string but the return value can be anything.
+
+Example:
+
+```
+process_handling: Dict[str, Callable[[str], Any]] = {
+    "time (UT sec of day)": str_to_float,
+    "lat": str_to_float,
+    "lon": str_to_float,
+    "alt(m)": str_to_float,
+    "reduced chi^2": str_to_float,
+    "P(dBW)": str_to_float,
+    "mask": str_hex_to_int
+}
+```
+"""
+
 longitude_header = 'lon'
 """
 The header for longitude
@@ -225,18 +159,8 @@ The header for altitude
 Default: `alt(m)`
 """
 
-start_datetime: datetime = None
-"""
-The start date window, as a datetime, for calculations
-"""
-
-end_datetime: datetime = None
-"""
-The end date window, as a datetime, for calculations
-"""
-
 def parse_data(
-    f, data_headers: list[str], date_start: datetime) -> pd.DataFrame:
+    f, data_headers: list[str], date_start: datetime, count_required: Tuple[str, Callable], filters: Tuple[str, Callable], start_datetime: datetime = None, end_datetime: datetime = None) -> pd.DataFrame:
     """
     This goes through the remaining of a file and processes the entire data into something a lot easier to use in Python
 
@@ -372,7 +296,6 @@ def parse_data(
     
     return df
 
-
 def return_data_headers_if_found(
     line: str, data_header_startswith: str
 ) -> list[str] | None:
@@ -398,18 +321,17 @@ def return_data_headers_if_found(
         return data_headers
     return None
 
-
-def get_dataframe(lightning_data_folder: str, file_name: str) -> pd.DataFrame | None:
+def get_dataframe(lightning_data_folder: str, file_name: str, count_required: Tuple[str, Callable], filters: Tuple[str, Callable], data_body_start = "*** data ***", start_time_indicator = "Data start time:", start_time_format = "%m/%d/%y %H:%M:%S", data_header_startswith = "Data:", start_datetime: datetime = None, end_datetime: datetime = None) -> pd.DataFrame | None:
     """
     Helper function for getting a pandas DataFrame from a .dat file
     """
 
     # Parse through data and retreive the Pandas DataFrame
     with open(os.path.join(lightning_data_folder, file_name), "r") as f:
-        return parse_file(f)
+        return parse_file(f, count_required, filters, data_body_start, start_time_indicator, start_time_format, data_header_startswith, start_datetime, end_datetime)
     return None
 
-
+@st.cache_data
 def generate_colors(num_colors):
     """Generate a list of unique dark colors using HSV/HSL color space."""
     colors = []
@@ -462,6 +384,7 @@ demtypes = {
 }
 
 
+@st.cache_data
 def get_opentopography_data(south, north, west, east, tif_file, demtype_index=0):
     """
     Fetch topography data from OpenTopography and load it as an xarray DataArray.
@@ -511,6 +434,7 @@ def get_opentopography_data(south, north, west, east, tif_file, demtype_index=0)
             topography_data = get_opentopography_data(south, north, west, east, tif_file, demtype_index+1)
         return topography_data
 
+@st.cache_data
 def cache_topography_data(tif_file, params, tries = 0) -> xarray.DataArray | None:
     if os.path.exists(tif_file):
         print(f"Loading data from cache: {tif_file}")
@@ -554,6 +478,7 @@ def align_up(x: float, base: float = 1.0) -> int:
     """Aligns the number up to the nearest multiple of base and returns an integer."""
     return int(math.ceil(x / base) * base)
 
+@st.cache_data
 def generate_integer_chunks(params: Dict[str, float]) -> xarray.DataArray | None:
     
     # Align lat/lon boundaries to multiples of chunk_size
@@ -582,19 +507,8 @@ def generate_integer_chunks(params: Dict[str, float]) -> xarray.DataArray | None
             yield cache_topography_data(tif_file, p2)
 
 
-downsampling_factor = 10
-"""
-The downsampling factor for the topography data (`10` implies we only accept 1 every 10 datapoints into the graph)
-
-It's meant to act as an optomization technique
-"""
-
-buffer_factor = 0.0
-"""
-The buffer overhead factor whenever displaying topography plot data
-"""
-
-def get_params(df:pd.DataFrame):
+@st.cache_data
+def get_params(df:pd.DataFrame, buffer_factor = 0.0):
     lowest_lon = None
     highest_lon = None
     
@@ -621,8 +535,9 @@ def get_params(df:pd.DataFrame):
 
     return params
 
-def add_topography(fig, df:pd.DataFrame, lat=True, lon=True, alt=True):
-    params = get_params(df)
+@st.cache_data
+def add_topography(fig, df:pd.DataFrame, buffer_factor, downsampling_factor: int, lat=True, lon=True, alt=True):
+    params = get_params(df, buffer_factor)
     
     for da in generate_integer_chunks(params):
 
@@ -680,7 +595,13 @@ def add_topography(fig, df:pd.DataFrame, lat=True, lon=True, alt=True):
         
     return fig
 
-def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, do_topography=True, lat=True, lon=True, alt=False):
+interactive_2d_dot_size=5
+"""
+Presumably the 2d dot radius, in pixels(?)
+"""
+
+@st.cache_data
+def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, buffer_factor:float, downsampling_factor: int, do_topography=True, lat=True, lon=True, alt=False):
     """
     Create an interactive 2D plot based on the selected axes, colored by the identifier.
 
@@ -710,7 +631,7 @@ def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, do_topography=T
     # Initialize figure
     fig = go.Figure()
     
-    params = get_params(df)
+    params = get_params(df, buffer_factor)
 
     lon_range = [params['west'], params['east']]
     lat_range = [params['south'], params['north']]
@@ -718,7 +639,7 @@ def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, do_topography=T
     if lat and lon:
         # If do_topography is True, plot the topography data
         if do_topography:
-            fig = add_topography(fig, df, lat, lon, alt)
+            fig = add_topography(fig, df,buffer_factor, downsampling_factor, lat, lon, alt)
 
         # If cities data is available, plot the cities
         if cities_file:
@@ -746,7 +667,7 @@ def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, do_topography=T
                     text=filtered_gdf['NAME'],
                     name='Cities',
                     textposition='top center',
-                    marker=dict(size=8, color='red'),
+                    marker=dict(size=interactive_2d_dot_size, color='red'),
                     showlegend=False
                 ))
         fig.update_xaxes(range=lon_range, fixedrange=True)
@@ -782,7 +703,7 @@ def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, do_topography=T
             x=subset[x_axis],
             y=subset[y_axis],
             mode='markers',
-            marker=dict(size=8, color=color, opacity=1.0),
+            marker=dict(size=interactive_2d_dot_size, color=color, opacity=1.0),
             name=f'{identifier} {value}',
             showlegend=False
         ))
@@ -796,16 +717,17 @@ def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, do_topography=T
         legend_title=identifier
     )
 
-    fig.update_traces(marker=dict(size=12,
+    fig.update_traces(marker=dict(size=interactive_2d_dot_size,
                               line=dict(width=1,
                                         color='white')),
                   selector=dict(mode='markers'))
     return fig
 
-def get_3_axis_plot(df:pd.DataFrame, identifier:str, do_topography=True):
-    lonalt_fig = get_interactive_2d_figure(df, identifier, do_topography=do_topography, lat=False, lon=True, alt=True)
-    latlon_fig = get_interactive_2d_figure(df, identifier, do_topography=do_topography, lat=True, lon=True, alt=False)
-    latalt_fig = get_interactive_2d_figure(df, identifier, do_topography=do_topography, lat=True, lon=False, alt=True)
+@st.cache_data
+def get_3_axis_plot(df:pd.DataFrame, identifier:str, buffer_factor:float, downsampling_factor:int, do_topography=True):
+    lonalt_fig = get_interactive_2d_figure(df, identifier, buffer_factor, downsampling_factor, do_topography=do_topography, lat=False, lon=True, alt=True)
+    latlon_fig = get_interactive_2d_figure(df, identifier, buffer_factor, downsampling_factor, do_topography=do_topography, lat=True, lon=True, alt=False)
+    latalt_fig = get_interactive_2d_figure(df, identifier, buffer_factor, downsampling_factor, do_topography=do_topography, lat=True, lon=False, alt=True)
 
     fig_combined = make_subplots(
         rows=3, cols=3,
@@ -840,9 +762,13 @@ def get_3_axis_plot(df:pd.DataFrame, identifier:str, do_topography=True):
 
     return fig_combined
 
-    
+interactive_3d_dot_size=5
+"""
+Presumably the 3d dot radius, in pixels(?)
+"""
 
-def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, do_topography=True):
+@st.cache_data
+def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, buffer_factor: float, downsampling_factor:int, do_topography=True):
     """
     Create an interactive 3D scatter plot for latitude, longitude, and altitude, colored by mask.
 
@@ -855,10 +781,10 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, do_topography=T
 
     os.makedirs("topography_cache", exist_ok=True)  # Ensure cache directory exists
 
-    params = get_params(df)
+    params = get_params(df, buffer_factor)
 
     if do_topography:
-        fig = add_topography(fig, df)
+        fig = add_topography(fig, df, buffer_factor, downsampling_factor)
 
 
     # If cities are able to be loaded, then load cities
@@ -895,6 +821,7 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, do_topography=T
                 hovertext=filtered_gdf['NAME'],
                 text = filtered_gdf['NAME'],
                 showlegend=False,
+                
             ))
 
 
@@ -923,7 +850,7 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, do_topography=T
             z=subset['alt(m)'], # Altitude corresponds to z-axis
             mode='markers',
             marker=dict(
-                size=5,
+                size=interactive_3d_dot_size,
                 color=color,
                 opacity=1
             ),
@@ -956,36 +883,12 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, do_topography=T
     height=400,
     )
 
-    fig.update_traces(marker=dict(size=7,
+    fig.update_traces(marker=dict(size=interactive_3d_dot_size,
                               line=dict(width=1,
                                         color='white')),
                   selector=dict(mode='markers'))
 
     return fig
-
-lightning_max_strike_time: float = 0.15
-"""
-Max strike time, in seconds
-
-Default: `0.15`
-"""
-
-lightning_max_strike_distance: float = 3000.0
-"""
-The max strike distance, in meters
-
-Default: `3000.0`
-"""
-
-lightning_minimum_speed: float = 299792.458
-"""
-The minimum speed to be monitored and accepted in meters per second (m/s). Recommended
-to be around 1-2% of the speed of light as lightning is
-traditionally slower than the speed of light due to
-environmental factors.
-
-Default: `299792.458` (The speed of light is)
-"""
 
 speed_of_light: float = 299792458.0 # m/s
 """
@@ -995,15 +898,16 @@ be changed to be more precise.
 Default: `299792458.0`
 """
 
-min_points_for_lightning = 2
-"""
-The minimum number of points required for a lightning strike identification
-"""
-
 @st.cache_data
-def get_strikes(df: pd.DataFrame) -> Tuple[List[pd.DataFrame], List[Tuple[str, str]]]:
+def get_strikes(df: pd.DataFrame, lightning_max_strike_time: float = 0.15, lightning_max_strike_distance: float = 3000.0, lightning_minimum_speed: float = 299792.458, min_points_for_lightning = 2) -> Tuple[List[pd.DataFrame], List[Tuple[str, str]]]:
     """
-    
+    Gets the list of strikes.
+
+    :param df: The strike data dataframe
+    :param lightning_max_strike_time: Max strike time, in seconds
+    :param lightning_max_strike_distance: The max strike distance, in meters
+    :param lightning_minimum_speed: The minimum speed to be monitored and accepted in meters per second (m/s). Recommended to be around 1-2% of the speed of light as lightning is traditionally slower than the speed of light due to environmental factors.
+    :param min_points_for_lightning: The minimum number of points required for a lightning strike identification
     """
     lightning_strikes: List[pd.DataFrame] = []
     strike_times: List[Tuple[float, float]] = []  # List of (min_time, max_time) for each strike
