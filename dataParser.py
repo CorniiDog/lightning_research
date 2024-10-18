@@ -661,7 +661,8 @@ def add_topography(fig, df:pd.DataFrame, lat=True, lon=True, alt=True):
                 y=filtered_latitudes,
                 colorscale='Viridis',
                 opacity=0.9,
-                showscale=True
+                showscale=True,
+                
             ))
         elif lat and lon and not alt:
             fig.add_trace(go.Contour(
@@ -673,7 +674,7 @@ def add_topography(fig, df:pd.DataFrame, lat=True, lon=True, alt=True):
                 opacity=0.9,
                 contours=dict(
                     coloring='heatmap',
-                    showlines=False,
+                    showlines=True,
                 )
             ))
         
