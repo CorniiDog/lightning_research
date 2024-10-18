@@ -463,7 +463,7 @@ def get_opentopography_data(south, north, west, east, tif_file, demtype_index=0)
         raise ValueError("OPENTOPOGRAPHY_API_KEY environment variable is not set.")
 
     # Construct the request URL
-    dem = demtypes.keys()[demtype_index]
+    dem = list(demtypes.keys())[demtype_index]
 
     if dem == "USGS30m" or dem == "USGS10m":
         url = f"https://portal.opentopography.org/API/usgsdem?datasetName={dem}&south={south}&north={north}&west={west}&east={east}&outputFormat=GTiff&API_Key={api_key}"
@@ -625,7 +625,6 @@ def add_topography(fig, df:pd.DataFrame, lat=True, lon=True, alt=True):
         # Step 2: Find indices of longitudes within the bounds
         lon_mask = (longitudes_downsampled >= params['west']) & (longitudes_downsampled <= params['east'])
 
-        st.write(params)
 
         # Step 3: Filter the latitude, longitude, and elevation arrays
         # Apply the latitude and longitude masks to create filtered arrays
