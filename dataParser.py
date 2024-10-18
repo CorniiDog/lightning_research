@@ -876,8 +876,6 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, do_topography=T
                 hovertext=filtered_gdf['NAME'],
                 text = filtered_gdf['NAME'],
                 showlegend=False,
-                color="green"
-
             ))
 
 
