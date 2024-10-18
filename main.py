@@ -72,69 +72,100 @@ dat_files = [f for f in os.listdir(path=lightning_data_folder) if f.endswith(dat
 st.sidebar.header("Parameters")
 
 
-with st.sidebar.expander("File/Date Select", expanded=True):
 
-
-    choices = ["Filter By Date Range", "Filter By Files"]
-    filter_type = st.selectbox("Select Filter Type", choices)
-
-    approved_files = []
-    start_date = None
-    end_date = None
-    if filter_type == "Filter By Date Range":
-            now: datetime = datetime.now()
-            start_date = st.date_input("Start Date", now - relativedelta(months=1))
-            dp.start_datetime = datetime(start_date.year, start_date.month, start_date.day)
-            end_date = st.date_input("End Date", now)
-            dp.end_datetime = datetime(end_date.year, end_date.month, end_date.day)
-            approved_files = dat_files
-    else:
-        dp.start_datetime = None
-        start_date = None
-        dp.end_datetime = None
-        end_date = None
-
-        approved_files = st.multiselect("Select files", dat_files)
-
-with st.sidebar.expander("Filtering Parameters", expanded=True):
-    chi_min: int = st.number_input("Reduced chi^2 min", 0, 100, 0)
-    chi_max: int = st.number_input("Reduced chi^2 max", 0, 1000, 50)
-    km_min: int = st.number_input("Altitude min (km)", 0, 100, 0)
-    km_max: int = st.number_input("Altitude max (km)", 0, 200, 200)
-    mask_count_min: int = st.slider("Mask minimum occurances", 1, 10, 2)
-
-with st.sidebar.expander("Lightning Parameters", expanded=True):
-    dp.lightning_max_strike_time = st.number_input("Lightning maximum allowed strike time between points (s)", 0.0, 2.0, 0.15)
-    dp.lightning_max_strike_distance = st.number_input("Lightning maximum allowed strike distance between points (km)", 0.0, 100.0, 3.0) * 1000.0
-    dp.lightning_minimum_speed = st.number_input("Lightning minimum allowed speed between points (m/s)", 0.0, 299792458.0, 299792.458)
-    dp.min_points_for_lightning = mask_count_min
-
-with st.sidebar.expander(label="Calendar Parameters", expanded=True):
-    max_calendar_items: int = st.number_input(
-        "Maximum Lightning Strikes To Display", 1, 10000, value=1000
-    )
-with st.sidebar.expander("Topography Parameters", expanded=True):
-    do_topography_mapping: int = st.checkbox(label="Enable Topography", value=False)
-    dp.downsampling_factor = st.number_input(
-        "Topography Downsampling (Compression) Factor", 1, 100, 1
-    )
-    dp.buffer_factor = st.number_input("Topography Overlap Buffer Size", 0.0, 2.0, 0.1)
-
-# Update the dp.filters and dp.count_required dynamically
-dp.filters = [
-    ["reduced chi^2", lambda chi: chi >= chi_min],
-    ["alt(m)", lambda alt: km_max * 1000 >= alt >= km_min * 1000],
-]
-
-if chi_max >= 0:
-    dp.filters.append(["reduced chi^2", lambda chi: chi <= chi_max])
-
-# This is a filtering for the count of a given component
-# I.e. there must be two instances of the same mask to be accepted, therefore
-# you can put ["mask", lambda count: count >= 2]
-dp.count_required = [["mask", lambda count: count >= mask_count_min]]
-# main function that goes through the files
 def main():
+
+    with st.sidebar.expander("Manage `.dat` Files", expanded=False):
+            # Section: File Upload
+            st.header("Upload a `.dat` File")
+            uploaded_file = st.file_uploader("", type="dat")
+            
+            if uploaded_file is not None:
+                save_uploaded_file(uploaded_file)
+                st.success(f"File '{uploaded_file.name}' uploaded successfully!")
+
+            st.divider()
+
+            st.header("Delete a `.dat` File")
+            
+            # Streamlit file selector
+            selected_file = st.selectbox("Select a data file:", dat_files)
+
+            # Option to delete the selected file
+            if st.button(f"Delete `{selected_file}`"):
+                st.error("Do you really want to delete this file?")
+                if st.button(f"Yes, delete `{selected_file}`"):
+                    if delete_file(selected_file):
+                        st.success(f"File '{selected_file}' deleted successfully!")
+                        st.rerun()
+
+                    else:
+                        st.error(f"Error: Could not delete file '{selected_file}'.")
+
+    with st.sidebar.expander("File/Date Select", expanded=True):
+
+        formatted_files = []
+        for i in range(len(dat_files)):
+            file = dat_files[i]
+            formatted_files.append(f"{dp.get_start_date_label(lightning_data_folder, file)}: {file}")
+
+        selected_files = st.multiselect("Select files", formatted_files)
+
+        for i in range(len(selected_files)):
+            selected_file:str = selected_files[i]
+            selected_files[i] = selected_file.split(": ")[-1]
+
+
+        now: datetime = datetime.now()
+
+        start_date = st.date_input("Start Date", now - relativedelta(months=1))
+        dp.start_datetime = datetime(start_date.year, start_date.month, start_date.day)
+        end_date = st.date_input("End Date", now)
+        dp.end_datetime = datetime(end_date.year, end_date.month, end_date.day)
+
+        approved_files = selected_files
+        if len(selected_files) == 0:
+            approved_files = dat_files
+
+
+    with st.sidebar.expander("Filtering Parameters", expanded=True):
+        chi_min: int = st.number_input("Reduced chi^2 min", 0, 100, 0)
+        chi_max: int = st.number_input("Reduced chi^2 max", 0, 1000, 50)
+        km_min: int = st.number_input("Altitude min (km)", 0, 100, 0)
+        km_max: int = st.number_input("Altitude max (km)", 0, 200, 200)
+        mask_count_min: int = st.slider("Mask minimum occurances", 1, 10, 2)
+
+    with st.sidebar.expander("Lightning Parameters", expanded=True):
+        dp.lightning_max_strike_time = st.number_input("Lightning maximum allowed strike time between points (s)", 0.0, 2.0, 0.15)
+        dp.lightning_max_strike_distance = st.number_input("Lightning maximum allowed strike distance between points (km)", 0.0, 100.0, 3.0) * 1000.0
+        dp.lightning_minimum_speed = st.number_input("Lightning minimum allowed speed between points (m/s)", 0.0, 299792458.0, 299792.458)
+        dp.min_points_for_lightning = mask_count_min
+
+    with st.sidebar.expander(label="Calendar Parameters", expanded=True):
+        max_calendar_items: int = st.number_input(
+            "Maximum Lightning Strikes To Display", 1, 10000, value=1000
+        )
+    with st.sidebar.expander("Topography Parameters", expanded=True):
+        do_topography_mapping: int = st.checkbox(label="Enable Topography", value=False)
+        dp.downsampling_factor = st.number_input(
+            "Topography Downsampling (Compression) Factor", 1, 100, 1
+        )
+        dp.buffer_factor = st.number_input("Topography Overlap Buffer Size", 0.0, 2.0, 0.1)
+
+    # Update the dp.filters and dp.count_required dynamically
+    dp.filters = [
+        ["reduced chi^2", lambda chi: chi >= chi_min],
+        ["alt(m)", lambda alt: km_max * 1000 >= alt >= km_min * 1000],
+    ]
+
+    if chi_max >= 0:
+        dp.filters.append(["reduced chi^2", lambda chi: chi <= chi_max])
+
+    # This is a filtering for the count of a given component
+    # I.e. there must be two instances of the same mask to be accepted, therefore
+    # you can put ["mask", lambda count: count >= 2]
+    dp.count_required = [["mask", lambda count: count >= mask_count_min]]
+    # main function that goes through the files
 
     lightning_strikes: List[pd.DataFrame] = []
     strike_times: List[Tuple[str, str]] = []
@@ -222,31 +253,6 @@ def main():
         st.warning("Data too restrained. Modify parameters on left sidebar.")
 
     st.divider()
-
-    with st.expander("Manage `.dat` Files", expanded=False):
-        # Section: File Upload
-        st.header("Upload a `.dat` File")
-        uploaded_file = st.file_uploader("", type="dat")
-        
-        if uploaded_file is not None:
-            save_uploaded_file(uploaded_file)
-            st.success(f"File '{uploaded_file.name}' uploaded successfully!")
-
-        st.divider()
-
-        st.header("Delete a `.dat` File")
-        
-        # Streamlit file selector
-        selected_file = st.selectbox("Select a data file:", dat_files)
-
-        # Option to delete the selected file
-        if st.button(f"Delete `{selected_file}`"):
-            st.error("Do you really want to delete this file?")
-            if st.button(f"Yes, delete `{selected_file}`"):
-                if delete_file(selected_file):
-                    st.success(f"File '{selected_file}' deleted successfully!")
-                else:
-                    st.error(f"Error: Could not delete file '{selected_file}'.")
 
 
 def save_uploaded_file(uploaded_file):

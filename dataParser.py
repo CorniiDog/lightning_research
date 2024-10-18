@@ -129,6 +129,28 @@ The indicator for the start of the data body (that is when the information begin
 Default: `"*** data ***"`
 """
 
+def get_start_date_label(lightning_data_folder: str, file_name: str) -> str:
+    """
+    This retreieves the start date of a `.dat` file
+
+    String date and time is format of `"%m/%d@%H:%M"`
+    """
+    # Parse through data and retreive the Pandas DataFrame
+    with open(os.path.join(lightning_data_folder, file_name), "r") as f:
+        date_start: datetime = None
+
+        for line in f:
+            line: str  # Hint that line is a string
+            if not date_start:
+                if line.startswith(start_time_indicator):
+                    potential_date = line.replace(start_time_indicator, "").strip() # Remove the indicator (i.e. "Data start time:")
+                    date_time_obj = datetime.strptime(potential_date, start_time_format)
+
+                    return date_time_obj.strftime("%m/%d %H:%M")
+    return ""
+
+
+
 ######################################################################################################
 ## Helper functions below with processing and retreiving a nice-looking DataFrame
 ######################################################################################################
@@ -827,10 +849,6 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, do_topography=T
     :param identifier: Column to color the plot based on
     :return: Plotly figure object
     """
-
-    # Topography generation
-    # Topography generation
-    # Generate a unique filename based on the bounding box
 
     fig = go.Figure()
 
