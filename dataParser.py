@@ -4,14 +4,12 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime, timedelta, timezone
 import numpy as np
-import colorsys, pickle
+import colorsys
 import geopandas as gpd
-import rasterio
 import xarray, requests
 from pyproj import Transformer
 import math
 import rioxarray
-import xarray as xr
 import time
 import streamlit as st
 
@@ -606,27 +604,27 @@ def add_topography(fig, df:pd.DataFrame, lat=True, lon=True, alt=True):
     
     for da in generate_integer_chunks(params):
 
-        # Step 2: Convert the DataArray to a NumPy array for the topography surface plot
+        # Convert the DataArray to a NumPy array for the topography surface plot
         elevation_data = da.values.squeeze()
 
         # Extract latitude and longitude from the DataArray
         latitudes = da.y.values
         longitudes = da.x.values
 
-        # Step 3: Downsample the topography data for faster plotting
+        # Downsample the topography data for faster plotting
         # Adjust the factor based on your performance needs
         elevation_data_downsampled = elevation_data[::downsampling_factor, ::downsampling_factor]
         latitudes_downsampled = latitudes[::downsampling_factor]
         longitudes_downsampled = longitudes[::downsampling_factor]
 
-        # Step 1: Find indices of latitudes within the bounds
+        # Find indices of latitudes within the bounds
         lat_mask = (latitudes_downsampled >= params['south']) & (latitudes_downsampled <= params['north'])
 
-        # Step 2: Find indices of longitudes within the bounds
+        # Find indices of longitudes within the bounds
         lon_mask = (longitudes_downsampled >= params['west']) & (longitudes_downsampled <= params['east'])
 
 
-        # Step 3: Filter the latitude, longitude, and elevation arrays
+        # Filter the latitude, longitude, and elevation arrays
         # Apply the latitude and longitude masks to create filtered arrays
 
         # Using np.ix_ to create a proper selection grid for 2D arrays
@@ -884,11 +882,11 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, do_topography=T
 
 
 
-    # Step 5: Generate colors for scatter points (lightning data)
+    # Generate colors for scatter points (lightning data)
     unique_values = df[identifier].unique()
     value_colors = {val: color for val, color in zip(unique_values, generate_colors(len(unique_values)))}
 
-    # Step 6: Limit the number of scatter points (lightning data) for faster plotting
+    #  Limit the number of scatter points (lightning data) for faster plotting
     max_points = 1000  # Adjust based on performance needs
     if len(df) > max_points:
         df_sampled = df.sample(n=max_points, random_state=42)
@@ -896,7 +894,7 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, do_topography=T
     else:
         df_sampled = df
 
-    # Step 7: Overlay the lightning data (scatter points) on top of the topography surface
+    #  Overlay the lightning data (scatter points) on top of the topography surface
     for mask_value, color in value_colors.items():
         subset = df_sampled[df_sampled[identifier] == mask_value]  # Subset of data matching the current mask_value
 
