@@ -478,7 +478,6 @@ def align_up(x: float, base: float = 1.0) -> int:
     """Aligns the number up to the nearest multiple of base and returns an integer."""
     return int(math.ceil(x / base) * base)
 
-@st.cache_data
 def generate_integer_chunks(params: Dict[str, float]) -> xarray.DataArray | None:
     
     # Align lat/lon boundaries to multiples of chunk_size
