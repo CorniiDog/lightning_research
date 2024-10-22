@@ -89,13 +89,13 @@ def parse_file(f, count_required: Tuple[str, Callable], filters: Tuple[str, Call
         if not data_headers:
             if line.startswith(data_header_startswith):
                 data_headers = return_data_headers_if_found(
-                    line, data_header_startswith
+                    line=line, data_header_startswith=data_header_startswith
                 )
 
         # If headers are found, then we go through
         elif data_result == None:
             if line.strip() == data_body_start:
-                data_result = parse_data(f, data_headers, date_start, count_required, filters, start_datetime, end_datetime)
+                data_result = parse_data(f=f, data_headers=data_headers, date_start=date_start, count_required=count_required, filters=filters, start_datetime=start_datetime, end_datetime=end_datetime)
 
         # Assume fully indented the data and break the for loop
         else:
@@ -328,7 +328,7 @@ def get_dataframe(lightning_data_folder: str, file_name: str, count_required: Tu
 
     # Parse through data and retreive the Pandas DataFrame
     with open(os.path.join(lightning_data_folder, file_name), "r") as f:
-        return parse_file(f, count_required, filters, data_body_start, start_time_indicator, start_time_format, data_header_startswith, start_datetime, end_datetime)
+        return parse_file(f=f, count_required=count_required, filters=filters, data_body_start=data_body_start, start_time_indicator=start_time_indicator, start_time_format=start_time_format, data_header_startswith=data_header_startswith, start_datetime=start_datetime, end_datetime=end_datetime)
     return None
 
 @st.cache_data
@@ -349,7 +349,7 @@ def color_df(df: pd.DataFrame, identifier: str) -> pd.DataFrame:
     unique_values = df[identifier].unique()
 
     # Assign a unique dark color to each unique value
-    value_colors = {val: color for val, color in zip(unique_values, generate_colors(len(unique_values)))}
+    value_colors = {val: color for val, color in zip(unique_values, generate_colors(num_colors=len(unique_values)))}
 
     # Function to apply row color based on the identifier value
     def color_row(row):
@@ -424,27 +424,27 @@ def get_opentopography_data(south, north, west, east, tif_file, demtype_index=0)
         
         if os.path.exists(tif_file):
             # Load the file as an xarray DataArray using rioxarray
-            data_array = rioxarray.open_rasterio(tif_file)
+            data_array = rioxarray.open_rasterio(filename=tif_file)
         
             return data_array
 
     else: # No data for the designated chunk or error
-        with st.spinner(f"No topography data found for region or issue with `{dem}: {demtypes[dem]}`, trying different data"):
+        with st.spinner(text=f"No topography data found for region or issue with `{dem}: {demtypes[dem]}`, trying different data"):
             time.sleep(2)
-            topography_data = get_opentopography_data(south, north, west, east, tif_file, demtype_index+1)
+            topography_data = get_opentopography_data(south=south, north=north, west=west, east=east, tif_file=tif_file, demtype_index=demtype_index+1)
         return topography_data
 
 @st.cache_data
 def cache_topography_data(tif_file, params, tries = 0) -> xarray.DataArray | None:
-    if os.path.exists(tif_file):
+    if os.path.exists(path=tif_file):
         print(f"Loading data from cache: {tif_file}")
-        result = rioxarray.open_rasterio(tif_file)
+        result = rioxarray.open_rasterio(filename=tif_file)
         
         if result is None:
             if tries > 5:
                 return None
-            os.remove(tif_file)
-            return cache_topography_data(tif_file, params, tries+1)
+            os.remove(path=tif_file)
+            return cache_topography_data(tif_file=tif_file, params=params, tries=tries+1)
         
         return result
     else:
@@ -454,7 +454,7 @@ def cache_topography_data(tif_file, params, tries = 0) -> xarray.DataArray | Non
             # topo_data = Topography(**params)
             # topo_data.fetch()  # Download the data
             # da = topo_data.load()  # Load into xarray DataArray
-            return get_opentopography_data(params['south'], params['north'], params['west'], params['east'], tif_file)
+            return get_opentopography_data(south=params['south'], north=params['north'], west=params['west'], east=params['east'], tif_file=tif_file)
 
 cities_file: str | None = None
 """
@@ -536,7 +536,7 @@ def get_params(df:pd.DataFrame, buffer_factor = 0.0):
 
 @st.cache_data
 def add_topography(fig, df:pd.DataFrame, buffer_factor, downsampling_factor: int, lat=True, lon=True, alt=True):
-    params = get_params(df, buffer_factor)
+    params = get_params(df=df, buffer_factor=buffer_factor)
     
     for da in generate_integer_chunks(params):
 
