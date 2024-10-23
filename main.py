@@ -26,7 +26,6 @@ st.markdown(f'''
 ''',unsafe_allow_html=True)
 
 st.title("Connor White's Lightning Data Parser")
-st.divider()
 
 # The lightning data folder containing the .dat files
 lightning_data_folder: str = "lightning_data"
@@ -146,7 +145,6 @@ def main():
             "Maximum Lightning Strikes To Display", 1, 10000, value=1000
         )
 
-        fine_tune_seconds: int = st.slider("Fine tune seconds threshold", 1, 100, 5)
     with st.sidebar.expander("Topography Parameters", expanded=True):
         do_topography_mapping: int = st.checkbox(label="Enable Topography", value=False)
         downsampling_factor = st.number_input(
@@ -215,32 +213,38 @@ def main():
             options["min"] = start_date.strftime('%Y-%m-%d')
             options["max"] = end_date.strftime('%Y-%m-%d')
 
-        st.header("Select Lightning Event")
+        with st.expander("Select Lightning Event", expanded=True):
 
-        timeline = st_timeline(items, groups=[], options=options, height="150px")
+            timeline = st_timeline(items, groups=[], options=options, height="150px")
 
-        if timeline:
-            unix_time = datetime.strptime(timeline["start"], "%Y-%m-%dT%H:%M:%S").timestamp()
-            index: int = timeline["id"]
+            if timeline:
+                fine_tune_seconds: int = st.slider("Fine-tune seconds", 1, 100, 5)
 
-            index_lookup = {timeline["content"]: index}
-            for i in range(len(strike_times)):
-                if i == index:
-                    continue
+                strike_found = True
+                unix_time = datetime.strptime(timeline["start"], "%Y-%m-%dT%H:%M:%S").timestamp()
+                index: int = timeline["id"]
 
-                strike_time = datetime.strptime(strike_times[i][0], "%Y-%m-%dT%H:%M:%S").timestamp()
-                if np.abs(unix_time - strike_time) < fine_tune_seconds:
+                index_lookup = {timeline["content"]: index}
+                for i in range(len(strike_times)):
+                    if i == index:
+                        continue
 
-                    timeline_start = strike_times[i][0].split("T")
-                    name = f"{lightning_strikes[i]['mask'][0]} {timeline_start[1]}"
-                    index_lookup[name] = i
+                    strike_time = datetime.strptime(strike_times[i][0], "%Y-%m-%dT%H:%M:%S").timestamp()
+                    if np.abs(unix_time - strike_time) < fine_tune_seconds:
 
-            strike_name: str = st.selectbox(f"Fine-tune selection within `{fine_tune_seconds}` seconds", list(index_lookup.keys()))
-            index: int = index_lookup[strike_name]
-            timeline_start = strike_times[index][0].split("T")
-            data_result: pd.DataFrame = lightning_strikes[index]
-            mask = data_result['mask'][0]
+                        timeline_start = strike_times[i][0].split("T")
+                        name = f"{lightning_strikes[i]['mask'][0]} {timeline_start[1]}"
+                        index_lookup[name] = i
 
+                strike_name: str = st.selectbox(f"Fine-tune selection within `{fine_tune_seconds}` seconds", list(index_lookup.keys()))
+                index: int = index_lookup[strike_name]
+                timeline_start = strike_times[index][0].split("T")
+                data_result: pd.DataFrame = lightning_strikes[index]
+                mask = data_result['mask'][0]
+            else:
+                strike_found = False
+
+        if strike_found:
             st.header(f"Lightning strike for mask `{mask}` on `{timeline_start[0]}` at `{timeline_start[1]}` UTC")
 
             col1, col2 = st.columns(2)
