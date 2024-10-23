@@ -12,6 +12,7 @@ import math
 import rioxarray
 import time
 import streamlit as st
+import pickle as pkl
 
 from typing import (
     Dict,
@@ -60,7 +61,7 @@ def get_start_date_label(lightning_data_folder: str, file_name: str, start_time_
 ######################################################################################################
 ## Helper functions below with processing and retreiving a nice-looking DataFrame
 ######################################################################################################
-def parse_file(f, count_required: Tuple[str, Callable], filters: Tuple[str, Callable], data_body_start = "*** data ***", start_time_indicator = "Data start time:", start_time_format = "%m/%d/%y %H:%M:%S", data_header_startswith = "Data:", start_datetime: datetime = None, end_datetime: datetime = None) -> pd.DataFrame:
+def parse_file(f, data_body_start = "*** data ***", start_time_indicator = "Data start time:", start_time_format = "%m/%d/%y %H:%M:%S", data_header_startswith = "Data:") -> pd.DataFrame:
     """
     This processes the entire file and extracts a pandas DataFrame
 
@@ -95,7 +96,7 @@ def parse_file(f, count_required: Tuple[str, Callable], filters: Tuple[str, Call
         # If headers are found, then we go through
         elif data_result == None:
             if line.strip() == data_body_start:
-                data_result = parse_data(f=f, data_headers=data_headers, date_start=date_start, count_required=count_required, filters=filters, start_datetime=start_datetime, end_datetime=end_datetime)
+                data_result = parse_data(f=f, data_headers=data_headers, date_start=date_start)
 
         # Assume fully indented the data and break the for loop
         else:
@@ -160,7 +161,7 @@ Default: `alt(m)`
 """
 
 def parse_data(
-    f, data_headers: list[str], date_start: datetime, count_required: Tuple[str, Callable], filters: Tuple[str, Callable], start_datetime: datetime = None, end_datetime: datetime = None) -> pd.DataFrame:
+    f, data_headers: list[str], date_start: datetime) -> pd.DataFrame:
     """
     This goes through the remaining of a file and processes the entire data into something a lot easier to use in Python
 
@@ -182,13 +183,6 @@ def parse_data(
     dict_result['y(m)'] = []
     dict_result['z(m)'] = []
 
-    # Create counter object with initialization of data
-    counters = {}
-    for arr in count_required:
-        arr: List
-        header = arr[0]
-        counters[header] = {} # Add the header to the counter
-
     # Make the keys for the dictionary with the designated headers
     for header in data_headers:
         dict_result[header] = []
@@ -199,19 +193,10 @@ def parse_data(
 
         data_row = line.split()  # Splits the line into designated sections
         respective_time = date_start
-        
-        # If start_date is established and that the respective time is before the start date, then skip
-        if start_datetime and respective_time < start_datetime:
-            continue
-        
-        # If end_date is established and that the respective time is after the end date, then skip
-        if end_datetime and respective_time > end_datetime:
-            continue
 
         lat, lon, alt = None, None, None
 
         # Process and format from string to respectable type
-        allow_pass = True
         for i in range(len(data_row)):
             data_cell = data_row[i]
 
@@ -222,25 +207,6 @@ def parse_data(
                 data_cell = process_handling[header](
                     data_cell
                 )  # Process the data and parse it to designated format
-
-                # Add seconds if the cell is respective
-
-            # Increment counter for the designated header (this is for counter filtering)
-            if header in counters.keys():
-                if not data_cell in counters[header].keys():
-                    counters[header][data_cell] = 0
-                
-                counters[header][data_cell] += 1
-
-            # Ensure that it's within filters rules. If it's not then prevent padding and break
-            for j in range(len(filters)):
-                if filters[j][0] == header and not filters[j][1](data_cell): # If the header name is the same (0 index)
-                    allow_pass = False #Use as flag for allow_pass
-                    break
-
-            # Break if allow_pass flag is false
-            if not allow_pass:
-                break
 
             data_row[i] = data_cell
 
@@ -254,10 +220,6 @@ def parse_data(
                 elif header == altitude_meters_header:
                     alt = data_cell
 
-
-        # Skip the line and do not allow parsing if the allow_pass is false
-        if not allow_pass:
-            continue
 
         # Append to dictionary
         for i in range(len(data_row)):
@@ -279,20 +241,6 @@ def parse_data(
         dict_result["z(m)"].append(z)
 
     df = pd.DataFrame(dict_result) # Create dataframe
-
-    # Go through every dataframe row
-    for index, row in df.iterrows():
-        # For every counter category headers
-        for header, data in counters.items():
-            
-            num_instances = data[row[header]]
-
-            for count_arr in count_required:
-                header: str = count_arr[0]
-                callback_func: Callable = count_arr[1]
-                # Now compare and drop if it fails
-                if not callback_func(num_instances):
-                    df.drop(index, inplace=True)
     
     return df
 
@@ -321,15 +269,64 @@ def return_data_headers_if_found(
         return data_headers
     return None
 
-def get_dataframe(lightning_data_folder: str, file_name: str, count_required: Tuple[str, Callable], filters: Tuple[str, Callable], data_body_start = "*** data ***", start_time_indicator = "Data start time:", start_time_format = "%m/%d/%y %H:%M:%S", data_header_startswith = "Data:", start_datetime: datetime = None, end_datetime: datetime = None) -> pd.DataFrame | None:
-    """
-    Helper function for getting a pandas DataFrame from a .dat file
-    """
+lightning_data_cache_folder = "lightning_data_cache"
 
-    # Parse through data and retreive the Pandas DataFrame
-    with open(os.path.join(lightning_data_folder, file_name), "r") as f:
-        return parse_file(f=f, count_required=count_required, filters=filters, data_body_start=data_body_start, start_time_indicator=start_time_indicator, start_time_format=start_time_format, data_header_startswith=data_header_startswith, start_datetime=start_datetime, end_datetime=end_datetime)
-    return None
+def get_dataframe(lightning_data_folder: str, file_name: str, count_required: Tuple[str, Callable], filters: Tuple[str, Callable], data_body_start="*** data ***", start_time_indicator="Data start time:", start_time_format="%m/%d/%y %H:%M:%S", data_header_startswith="Data:", start_datetime: datetime = None, end_datetime: datetime = None) -> pd.DataFrame | None:
+    """
+    Helper function for getting a pandas DataFrame from a .dat file.
+    The function caches the data along with start and end datetime in a pickle file as [start_datetime, end_datetime, data].
+    """
+    os.makedirs(lightning_data_cache_folder, exist_ok=True)  # Ensure cache directory exists
+    potential_cache = file_name.replace(".dat", ".pkl")
+    potential_cache_full = os.path.join(lightning_data_cache_folder, potential_cache)
+
+    data: pd.DataFrame = None
+
+    if os.path.exists(potential_cache_full):
+        with open(potential_cache_full, "rb") as f:
+            # Load start_datetime, end_datetime, and data from the pickle file
+            start_cached, end_cached, data = pkl.load(f)
+
+            end_unix = end_datetime.timestamp()
+            start_unix = start_datetime.timestamp()
+            if not(start_unix <= start_cached <= end_unix or start_unix <= end_cached <= end_unix):
+                return None
+    else:
+        with open(os.path.join(lightning_data_folder, file_name), "r") as f:
+            data = parse_file(f=f, data_body_start=data_body_start, start_time_indicator=start_time_indicator, start_time_format=start_time_format, data_header_startswith=data_header_startswith)
+
+            # Check if data is not empty
+            if data is not None and not data.empty:
+                start_cached = data['unix'].min()
+                end_cached = data['unix'].max()
+            else:
+                start_cached = None
+                end_cached = None
+
+            with open(potential_cache_full, "wb") as f:
+                # Dump [start_cached, end_cached, data] into the pickle file
+                pkl.dump([start_cached, end_cached, data], f)
+
+    # Return None if data is empty
+    if data is None:
+        return None
+
+    # Apply count_required filtering (Check if occurrences exceed condition)
+    for column, condition in count_required:
+        counts = data[column].value_counts()  # Get the count of occurrences for each value in the column
+        valid_values = counts[counts.apply(condition)].index  # Get the values where count meets the condition
+        data = data[data[column].isin(valid_values)]  # Filter the DataFrame by the valid values
+
+    # Apply additional filters
+    for column, condition in filters:
+        data = data[data[column].apply(condition)]
+
+    # If a time range is provided, filter the DataFrame based on the 'unix' time
+    if start_datetime and end_datetime:
+        # Ensure 'unix' column is in datetime format
+        data = data[(data['unix'] >= start_datetime.timestamp()) & (data['unix'] <= end_datetime.timestamp())]
+
+    return data
 
 @st.cache_data
 def generate_colors(num_colors):
