@@ -317,15 +317,17 @@ def get_dataframe(lightning_data_folder: str, file_name: str, count_required: Tu
     if data is None:
         return None
 
+    with st.spinner(f"Applying filters for `{file_name}`"):
+        # Apply additional filters
+        for column, condition in filters:
+            data = data[data[column].apply(condition)]
+    
     # Apply count_required filtering (Check if occurrences exceed condition)
-    for column, condition in count_required:
-        counts = data[column].value_counts()  # Get the count of occurrences for each value in the column
-        valid_values = counts[counts.apply(condition)].index  # Get the values where count meets the condition
-        data = data[data[column].isin(valid_values)]  # Filter the DataFrame by the valid values
-
-    # Apply additional filters
-    for column, condition in filters:
-        data = data[data[column].apply(condition)]
+    with st.spinner(f"Counting indices for `{file_name}`"):
+        for column, condition in count_required:
+            counts = data[column].value_counts()  # Get the count of occurrences for each value in the column
+            valid_values = counts[counts.apply(condition)].index  # Get the values where count meets the condition
+            data = data[data[column].isin(valid_values)]  # Filter the DataFrame by the valid values
 
     # If a time range is provided, filter the DataFrame based on the 'unix' time
     if start_datetime and end_datetime:
@@ -914,78 +916,71 @@ def get_strikes(df: pd.DataFrame, lightning_max_strike_time: float = 0.15, light
     lightning_strikes: List[pd.DataFrame] = []
     strike_times: List[Tuple[float, float]] = []  # List of (min_time, max_time) for each strike
 
-    unique_masks = df['mask'].unique()
+    for i, row in df.iterrows():
+        x1 = row['x(m)']
+        y1 = row['y(m)']
+        z1 = row['z(m)']
+        time1 = row['unix']
+        mask_value = row['mask']
 
-    # Iterate through each unique mask value
-    for mask_value in unique_masks:
-        # Filter the DataFrame to get only rows with the current mask value
-        mask_subset = df[df['mask'] == mask_value]
-        
-        for i in range(len(mask_subset)):
-            # Use double brackets to get a DataFrame instead of a Series
-            row = mask_subset.iloc[[i]]  
+        row = pd.DataFrame([row])
+            
+        data_found = False
+        for j in range(len(lightning_strikes)):
+            if data_found:
+                break
+            
+            # Check if the new point's time is within acceptable range of the existing strike's time boundaries
+            min_time, max_time = strike_times[j]
+            if time1 < min_time - lightning_max_strike_time or time1 > max_time + lightning_max_strike_time:
+                continue  # Skip this strike as the times are too different
 
-            x1 = row['x(m)'].values[0]
-            y1 = row['y(m)'].values[0]
-            z1 = row['z(m)'].values[0]
-            time1 = row['unix'].values[0]
-
-            data_found = False  # Flag to check if row is added to an existing strike
-
-            for j in range(len(lightning_strikes)):
-                # Check if the new point's time is within acceptable range of the existing strike's time boundaries
-                min_time, max_time = strike_times[j]
-                if time1 < min_time - lightning_max_strike_time or time1 > max_time + lightning_max_strike_time:
-                    continue  # Skip this strike as the times are too different
-
-                if data_found:
+            # Iterate over rows in the existing strike DataFrame
+            for k, other_row in lightning_strikes[j].iterrows():
+                if mask_value != other_row['mask']:
                     break
 
-                # Iterate over rows in the existing strike DataFrame
-                for k, other_row in lightning_strikes[j].iterrows():
-                    if mask_value != other_row['mask']:
-                        break
+                time2 = other_row['unix']
+                delta_t = time1 - time2
 
-                    time2 = other_row['unix']
-                    delta_t = time1 - time2
+                # If times are grossly different, skip
+                if np.abs(delta_t) > lightning_max_strike_time:
+                    continue
 
-                    # If times are grossly different, skip
-                    if np.abs(delta_t) > lightning_max_strike_time:
-                        continue
+                x2 = other_row['x(m)']
+                y2 = other_row['y(m)']
+                z2 = other_row['z(m)']
+                
+                rough_dist = max(abs(x1 - x2), abs(y1 - y2), abs(z1 - z2))
+                if rough_dist > lightning_max_strike_distance:
+                    continue
 
+                dist = np.sqrt((x1 - x2)**2 + (y1 - y2)**2 + (z1 - z2)**2)
 
-                    x2 = other_row['x(m)']
-                    y2 = other_row['y(m)']
-                    z2 = other_row['z(m)']
-                    rough_dist = max(abs(x1 - x2), abs(y1 - y2), abs(z1 - z2))
-                    if rough_dist > lightning_max_strike_distance:
-                        continue
+                # If distance out of bounds, skip
+                if dist > lightning_max_strike_distance:
+                    continue
 
-                    dist = np.sqrt((x1 - x2)**2 + (y1 - y2)**2 + (z1 - z2)**2)
+                speed = np.abs(dist / delta_t) if delta_t != 0 else np.inf
 
-                    # If distance out of bounds, skip
-                    if dist > lightning_max_strike_distance:
-                        continue
+                # If speed is unrealistic, skip
+                if speed < lightning_minimum_speed or speed > speed_of_light:
+                    continue
 
-                    speed = np.abs(dist / delta_t) if delta_t != 0 else np.inf
+                # Concatenate the row to the existing DataFrame
+                lightning_strikes[j] = pd.concat([lightning_strikes[j], row], ignore_index=True)
 
-                    # If speed is unrealistic, skip
-                    if speed < lightning_minimum_speed or speed > speed_of_light:
-                        continue
+                # Update the time boundaries for this strike
+                strike_times[j] = (min(min_time, time1), max(max_time, time1))
 
-                    # Concatenate the row to the existing DataFrame
-                    lightning_strikes[j] = pd.concat([lightning_strikes[j], row], ignore_index=True)
+                data_found = True
+                break
 
-                    # Update the time boundaries for this strike
-                    strike_times[j] = (min(min_time, time1), max(max_time, time1))
+        # If the row didn't match any existing strike, start a new one
+        if not data_found:
+            lightning_strikes.append(row)
+            strike_times.append((time1, time1))  # Initialize min and max time with time1
 
-                    data_found = True
-                    break
-
-            # If the row didn't match any existing strike, start a new one
-            if not data_found:
-                lightning_strikes.append(row)
-                strike_times.append((time1, time1))  # Initialize min and max time with time1
 
     with st.spinner("Filtering strikes"):
       # Filter out strikes with fewer rows than min_points_for_lightning
