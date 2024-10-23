@@ -311,7 +311,7 @@ def get_dataframe(lightning_data_folder: str, file_name: str, count_required: Tu
     The function caches the data along with start and end datetime in a pickle file as [start_datetime, end_datetime, data].
     """
     
-    data = get_dataframe_unfiltered(lightning_data_folder=lightning_data_cache_folder, file_name=file_name, data_body_start=data_body_start, start_time_indicator=start_time_indicator, start_time_format=start_time_format, data_header_startswith=data_header_startswith, start_datetime=start_datetime, end_datetime=end_datetime)
+    data = get_dataframe_unfiltered(lightning_data_folder=lightning_data_folder, file_name=file_name, data_body_start=data_body_start, start_time_indicator=start_time_indicator, start_time_format=start_time_format, data_header_startswith=data_header_startswith, start_datetime=start_datetime, end_datetime=end_datetime)
 
     # Return None if data is empty
     if data is None:
@@ -986,11 +986,13 @@ def get_strikes(df: pd.DataFrame, lightning_max_strike_time: float = 0.15, light
             mask_locations[mask_value].append(pd.DataFrame([row]))
             mask_strike_times[mask_value].append((time1, time1))  # Initialize min and max time with time1
     
+
     lightning_strikes: List[pd.DataFrame] = []
     strike_times: List[Tuple[float, float]] = []  # List of (min_time, max_time) for each strike
     for mask_value, strikes in mask_locations.items():
         lightning_strikes += strikes
         strike_times += mask_strike_times[mask_value]
+
 
     with st.spinner("Filtering strikes"):
       # Filter out strikes with fewer rows than min_points_for_lightning

@@ -137,7 +137,7 @@ def main():
 
     with st.sidebar.expander("Lightning Parameters", expanded=True):
         lightning_max_strike_time = st.number_input("Lightning maximum allowed strike time between points (s)", 0.0, 2.0, 0.15)
-        lightning_max_strike_distance = st.number_input("Lightning maximum allowed strike distance between points (km)", 0.0, 100.0, 3.0) * 1000.0
+        lightning_max_strike_distance = st.number_input("Lightning maximum allowed strike distance between points (km)", 0.0, 200.0, 50.0) * 1000.0
         lightning_minimum_speed = st.number_input("Lightning minimum allowed speed between points (m/s)", 0.0, 299792458.0, 299792.458)
         min_points_for_lightning = mask_count_min
 
@@ -181,7 +181,7 @@ def main():
         with st.spinner(f"Retreiving data for `{file}`"):
             data_result: pd.DataFrame = dp.get_dataframe(lightning_data_folder=lightning_data_folder, file_name=file, count_required=count_required, filters=filters, start_datetime=start_datetime, end_datetime=end_datetime)
 
-        if data_result is not None:
+        if data_result is not None and len(data_result) > 0:
           with st.spinner(f"Parsing lightning data for `{file}`"):
               sub_strikes, substrike_times = dp.get_strikes(df=data_result, lightning_max_strike_time=lightning_max_strike_time, lightning_max_strike_distance=lightning_max_strike_distance, lightning_minimum_speed=lightning_minimum_speed, min_points_for_lightning=min_points_for_lightning)
               
@@ -191,13 +191,16 @@ def main():
 
 
     if len(lightning_strikes) > 0:
+
         with st.spinner(f"Establishing timeline"):
             items = []
             for i in range(len(lightning_strikes)):
+                if len(lightning_strikes[i]) < min_points_for_lightning:
+                    continue
                 timeline_start = strike_times[i][0].split("T")
                 data_dict = {
                     "id": i,
-                    "content": f"{lightning_strikes[i]['mask'][0]} @ {timeline_start[1]}",
+                    "content": f"{lightning_strikes[i]['mask'][0]} {timeline_start[1]}",
                     "start": strike_times[i][0],
                 }
                 if i > max_calendar_items-1:
@@ -205,7 +208,7 @@ def main():
                     break
                 items.append(data_dict)
 
-        options = {"cluster": True, "snap": True, "stack": False}
+        options = {"cluster": False, "snap": False, "stack": False}
         if start_date and end_date:
             options["min"] = start_date.strftime('%Y-%m-%d')
             options["max"] = end_date.strftime('%Y-%m-%d')
@@ -215,10 +218,27 @@ def main():
         timeline = st_timeline(items, groups=[], options=options, height="150px")
 
         if timeline:
+            unix_time = datetime.strptime(timeline["start"], "%Y-%m-%dT%H:%M:%S").timestamp()
             index: int = timeline["id"]
+
+            index_lookup = {timeline["content"]: index}
+            for i in range(len(strike_times)):
+                if i == index:
+                    continue
+
+                strike_time = datetime.strptime(strike_times[i][0], "%Y-%m-%dT%H:%M:%S").timestamp()
+                if np.abs(unix_time - strike_time) < 2.0:
+
+                    timeline_start = strike_times[i][0].split("T")
+                    name = f"{lightning_strikes[i]['mask'][0]} {timeline_start[1]}"
+                    index_lookup[name] = i
+
+            strike_name: str = st.selectbox(f"Fine-tune selection", list(index_lookup.keys()))
+            index: int = index_lookup[strike_name]
+            timeline_start = strike_times[index][0].split("T")
             data_result: pd.DataFrame = lightning_strikes[index]
-            timeline_start = timeline["start"].split("T")
             mask = data_result['mask'][0]
+
             st.header(f"Lightning strike for mask `{mask}` on `{timeline_start[0]}` at `{timeline_start[1]}` UTC")
 
             col1, col2 = st.columns(2)
