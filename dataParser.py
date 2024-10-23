@@ -271,41 +271,47 @@ def return_data_headers_if_found(
 
 lightning_data_cache_folder = "lightning_data_cache"
 
+@st.cache_data
+def get_dataframe_unfiltered(lightning_data_folder: str, file_name: str, data_body_start="*** data ***", start_time_indicator="Data start time:", start_time_format="%m/%d/%y %H:%M:%S", data_header_startswith="Data:", start_datetime: datetime = None, end_datetime: datetime = None) -> pd.DataFrame | None:
+  os.makedirs(lightning_data_cache_folder, exist_ok=True)  # Ensure cache directory exists
+  potential_cache = file_name.replace(".dat", ".pkl")
+  potential_cache_full = os.path.join(lightning_data_cache_folder, potential_cache)
+
+  data: pd.DataFrame = None
+
+  if os.path.exists(potential_cache_full):
+      with open(potential_cache_full, "rb") as f:
+          # Load start_datetime, end_datetime, and data from the pickle file
+          start_cached, end_cached, data = pkl.load(f)
+
+          end_unix = end_datetime.timestamp()
+          start_unix = start_datetime.timestamp()
+          if not(start_unix <= start_cached <= end_unix or start_unix <= end_cached <= end_unix):
+              return None
+  else:
+      with open(os.path.join(lightning_data_folder, file_name), "r") as f:
+          data = parse_file(f=f, data_body_start=data_body_start, start_time_indicator=start_time_indicator, start_time_format=start_time_format, data_header_startswith=data_header_startswith)
+
+          # Check if data is not empty
+          if data is not None and not data.empty:
+              start_cached = data['unix'].min()
+              end_cached = data['unix'].max()
+          else:
+              start_cached = None
+              end_cached = None
+
+          with open(potential_cache_full, "wb") as f:
+              # Dump [start_cached, end_cached, data] into the pickle file
+              pkl.dump([start_cached, end_cached, data], f)
+  return data
+  
 def get_dataframe(lightning_data_folder: str, file_name: str, count_required: Tuple[str, Callable], filters: Tuple[str, Callable], data_body_start="*** data ***", start_time_indicator="Data start time:", start_time_format="%m/%d/%y %H:%M:%S", data_header_startswith="Data:", start_datetime: datetime = None, end_datetime: datetime = None) -> pd.DataFrame | None:
     """
     Helper function for getting a pandas DataFrame from a .dat file.
     The function caches the data along with start and end datetime in a pickle file as [start_datetime, end_datetime, data].
     """
-    os.makedirs(lightning_data_cache_folder, exist_ok=True)  # Ensure cache directory exists
-    potential_cache = file_name.replace(".dat", ".pkl")
-    potential_cache_full = os.path.join(lightning_data_cache_folder, potential_cache)
-
-    data: pd.DataFrame = None
-
-    if os.path.exists(potential_cache_full):
-        with open(potential_cache_full, "rb") as f:
-            # Load start_datetime, end_datetime, and data from the pickle file
-            start_cached, end_cached, data = pkl.load(f)
-
-            end_unix = end_datetime.timestamp()
-            start_unix = start_datetime.timestamp()
-            if not(start_unix <= start_cached <= end_unix or start_unix <= end_cached <= end_unix):
-                return None
-    else:
-        with open(os.path.join(lightning_data_folder, file_name), "r") as f:
-            data = parse_file(f=f, data_body_start=data_body_start, start_time_indicator=start_time_indicator, start_time_format=start_time_format, data_header_startswith=data_header_startswith)
-
-            # Check if data is not empty
-            if data is not None and not data.empty:
-                start_cached = data['unix'].min()
-                end_cached = data['unix'].max()
-            else:
-                start_cached = None
-                end_cached = None
-
-            with open(potential_cache_full, "wb") as f:
-                # Dump [start_cached, end_cached, data] into the pickle file
-                pkl.dump([start_cached, end_cached, data], f)
+    
+    data = get_dataframe_unfiltered(lightning_data_folder=lightning_data_cache_folder, file_name=file_name, data_body_start=data_body_start, start_time_indicator=start_time_indicator, start_time_format=start_time_format, data_header_startswith=data_header_startswith, start_datetime=start_datetime, end_datetime=end_datetime)
 
     # Return None if data is empty
     if data is None:
@@ -951,6 +957,10 @@ def get_strikes(df: pd.DataFrame, lightning_max_strike_time: float = 0.15, light
                     x2 = other_row['x(m)']
                     y2 = other_row['y(m)']
                     z2 = other_row['z(m)']
+                    rough_dist = max(abs(x1 - x2), abs(y1 - y2), abs(z1 - z2))
+                    if rough_dist > lightning_max_strike_distance:
+                        continue
+
                     dist = np.sqrt((x1 - x2)**2 + (y1 - y2)**2 + (z1 - z2)**2)
 
                     # If distance out of bounds, skip
@@ -977,16 +987,17 @@ def get_strikes(df: pd.DataFrame, lightning_max_strike_time: float = 0.15, light
                 lightning_strikes.append(row)
                 strike_times.append((time1, time1))  # Initialize min and max time with time1
 
-    # Filter out strikes with fewer rows than min_points_for_lightning
-    filtered_strikes = []
-    filtered_strike_times = []
-    for i, strike in enumerate(lightning_strikes):
-        if len(strike) >= min_points_for_lightning:
-            filtered_strikes.append(strike)
-            # Convert Unix timestamps to ISO formatted datetime strings
-            min_time_unix, max_time_unix = strike_times[i]
-            min_time_str = datetime.fromtimestamp(min_time_unix, tz=timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
-            max_time_str = datetime.fromtimestamp(max_time_unix, tz=timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
-            filtered_strike_times.append((min_time_str, max_time_str))
+    with st.spinner("Filtering strikes"):
+      # Filter out strikes with fewer rows than min_points_for_lightning
+      filtered_strikes = []
+      filtered_strike_times = []
+      for i, strike in enumerate(lightning_strikes):
+          if len(strike) >= min_points_for_lightning:
+              filtered_strikes.append(strike)
+              # Convert Unix timestamps to ISO formatted datetime strings
+              min_time_unix, max_time_unix = strike_times[i]
+              min_time_str = datetime.fromtimestamp(min_time_unix, tz=timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
+              max_time_str = datetime.fromtimestamp(max_time_unix, tz=timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
+              filtered_strike_times.append((min_time_str, max_time_str))
 
     return filtered_strikes, filtered_strike_times

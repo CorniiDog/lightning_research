@@ -211,7 +211,7 @@ def main():
         st.header("Select Lightning Event")
 
         timeline = st_timeline(items, groups=[], options=options, height="150px")
-        print(timeline)
+
         if timeline:
             index: int = timeline["id"]
             data_result: pd.DataFrame = lightning_strikes[index]
