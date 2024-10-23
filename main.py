@@ -184,8 +184,10 @@ def main():
         if data_result is not None:
           with st.spinner(f"Parsing lightning data for `{file}`"):
               sub_strikes, substrike_times = dp.get_strikes(df=data_result, lightning_max_strike_time=lightning_max_strike_time, lightning_max_strike_distance=lightning_max_strike_distance, lightning_minimum_speed=lightning_minimum_speed, min_points_for_lightning=min_points_for_lightning)
-              lightning_strikes += sub_strikes # Concatenate to lightning_strikes
-              strike_times += substrike_times
+              
+              if len(substrike_times) > 0:
+                lightning_strikes += sub_strikes # Concatenate to lightning_strikes
+                strike_times += substrike_times
 
 
     if len(lightning_strikes) > 0:
