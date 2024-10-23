@@ -133,7 +133,7 @@ def main():
         chi_max: int = st.number_input("Reduced chi^2 max", 0, 1000, 50)
         km_min: int = st.number_input("Altitude min (km)", 0, 100, 0)
         km_max: int = st.number_input("Altitude max (km)", 0, 200, 200)
-        mask_count_min: int = st.slider("Mask minimum occurances", 1, 10, 2)
+        mask_count_min: int = st.slider("Mask minimum occurances", 1, 10, 4)
 
     with st.sidebar.expander("Lightning Parameters", expanded=True):
         lightning_max_strike_time = st.number_input("Lightning maximum allowed strike time between points (s)", 0.0, 2.0, 0.15)
