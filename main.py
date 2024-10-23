@@ -145,6 +145,8 @@ def main():
         max_calendar_items: int = st.number_input(
             "Maximum Lightning Strikes To Display", 1, 10000, value=1000
         )
+
+        fine_tune_seconds: int = st.slider("Fine tune seconds threshold", 1, 100, 5)
     with st.sidebar.expander("Topography Parameters", expanded=True):
         do_topography_mapping: int = st.checkbox(label="Enable Topography", value=False)
         downsampling_factor = st.number_input(
@@ -227,13 +229,13 @@ def main():
                     continue
 
                 strike_time = datetime.strptime(strike_times[i][0], "%Y-%m-%dT%H:%M:%S").timestamp()
-                if np.abs(unix_time - strike_time) < 2.0:
+                if np.abs(unix_time - strike_time) < fine_tune_seconds:
 
                     timeline_start = strike_times[i][0].split("T")
                     name = f"{lightning_strikes[i]['mask'][0]} {timeline_start[1]}"
                     index_lookup[name] = i
 
-            strike_name: str = st.selectbox(f"Fine-tune selection", list(index_lookup.keys()))
+            strike_name: str = st.selectbox(f"Fine-tune selection within `{fine_tune_seconds}` seconds", list(index_lookup.keys()))
             index: int = index_lookup[strike_name]
             timeline_start = strike_times[index][0].split("T")
             data_result: pd.DataFrame = lightning_strikes[index]
