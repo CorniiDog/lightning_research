@@ -74,6 +74,8 @@ st.sidebar.header("Parameters")
 
 def main():
 
+    dp.polish_data_cache(lightning_data_folder=lightning_data_folder)
+
     with st.sidebar.expander("Manage `.dat` Files", expanded=False):
             # Section: File Upload
             st.header("Upload a `.dat` File")
@@ -96,6 +98,7 @@ def main():
                 if st.button(f"Yes, delete `{selected_file}`"):
                     if delete_file(selected_file):
                         st.success(f"File '{selected_file}' deleted successfully!")
+                        dp.polish_data_cache(lightning_data_folder=lightning_data_folder)
                         st.rerun()
 
                     else:

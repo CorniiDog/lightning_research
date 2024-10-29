@@ -31,7 +31,6 @@ X-axis points from the center of the Earth to the intersection of the Equator an
 Y-axis points from the center of the Earth to the intersection of the Equator and 90° East longitude.
 """
 
-
 @st.cache_data
 def get_start_date_label(lightning_data_folder: str, file_name: str, start_time_indicator = "Data start time:", start_time_format = "%m/%d/%y %H:%M:%S") -> str:
     """
@@ -51,7 +50,7 @@ def get_start_date_label(lightning_data_folder: str, file_name: str, start_time_
             if not date_start:
                 if line.startswith(start_time_indicator):
                     potential_date = line.replace(start_time_indicator, "").strip() # Remove the indicator (i.e. "Data start time:")
-                    date_time_obj = datetime.strptime(potential_date, start_time_format)
+                    date_time_obj = datetime.strptime(potential_date, start_time_format).replace(tzinfo=timezone.utc)
 
                     return date_time_obj.strftime("%m/%d %H:%M")
     return ""
@@ -81,10 +80,10 @@ def parse_file(f, data_body_start = "*** data ***", start_time_indicator = "Data
         if not date_start:
             if line.startswith(start_time_indicator):
                 potential_date = line.replace(start_time_indicator, "").strip() # Remove the indicator (i.e. "Data start time:")
-                date_time_obj = datetime.strptime(potential_date, start_time_format)
+                date_time_obj = datetime.strptime(potential_date, start_time_format).replace(tzinfo=timezone.utc)
 
                 # Set the time to 00:00:00
-                date_start = date_time_obj.replace(hour=0, minute=0, second=0)
+                date_start = date_time_obj.replace(hour=0, minute=0, second=0, tzinfo=timezone.utc)
 
         # Extract data headers if not found
         if not data_headers:
@@ -271,13 +270,42 @@ def return_data_headers_if_found(
 
 lightning_data_cache_folder = "lightning_data_cache"
 
+def polish_data_cache(lightning_data_folder: str):
+    """
+    The following polishes the data cache (removes .pkl files of corresponding lightning data un-present)
+    """
+    os.makedirs(lightning_data_folder, exist_ok=True)  # Ensure cache directory exists
+    os.makedirs(lightning_data_cache_folder, exist_ok=True)  # Ensure cache directory exists
+
+
+    with st.spinner("Polishing cache and updating data"):
+        for cache_file in os.listdir(lightning_data_cache_folder):
+            cache_filename_without_extension = cache_file.replace(".pkl", "")
+
+            found = False
+            for dat_file in os.listdir(lightning_data_folder):
+                if cache_filename_without_extension in dat_file:
+                    found = True
+                    break
+
+            if not found:
+                os.remove(os.path.join(lightning_data_cache_folder, cache_file))
+
+        
+            
+        
+
 @st.cache_data
 def get_dataframe_unfiltered(lightning_data_folder: str, file_name: str, data_body_start="*** data ***", start_time_indicator="Data start time:", start_time_format="%m/%d/%y %H:%M:%S", data_header_startswith="Data:", start_datetime: datetime = None, end_datetime: datetime = None) -> pd.DataFrame | None:
+  os.makedirs(lightning_data_folder, exist_ok=True)  # Ensure cache directory exists
   os.makedirs(lightning_data_cache_folder, exist_ok=True)  # Ensure cache directory exists
-  potential_cache = file_name.replace(".dat", ".pkl")
+  potential_cache = '.'.join(file_name.split(".")[:-1]) + ".pkl"
   potential_cache_full = os.path.join(lightning_data_cache_folder, potential_cache)
 
   data: pd.DataFrame = None
+
+  start_datetime = start_datetime.replace(tzinfo=timezone.utc)
+  end_datetime = end_datetime.replace(tzinfo=timezone.utc)
 
   if os.path.exists(potential_cache_full):
       with open(potential_cache_full, "rb") as f:
@@ -310,7 +338,8 @@ def get_dataframe(lightning_data_folder: str, file_name: str, count_required: Tu
     Helper function for getting a pandas DataFrame from a .dat file.
     The function caches the data along with start and end datetime in a pickle file as [start_datetime, end_datetime, data].
     """
-    
+    os.makedirs(lightning_data_folder, exist_ok=True)  # Ensure cache directory exists
+
     data = get_dataframe_unfiltered(lightning_data_folder=lightning_data_folder, file_name=file_name, data_body_start=data_body_start, start_time_indicator=start_time_indicator, start_time_format=start_time_format, data_header_startswith=data_header_startswith, start_datetime=start_datetime, end_datetime=end_datetime)
 
     # Return None if data is empty
@@ -736,7 +765,7 @@ def get_3_axis_plot(df:pd.DataFrame, identifier:str, buffer_factor:float, downsa
     fig_combined = make_subplots(
         rows=3, cols=3,
         specs=[[{"type": "scatter", "colspan": 2}, None, None], [{"type": "scatter", "colspan": 2, "rowspan": 2}, None, {"type": "scatter", "rowspan": 2}], [None, None, None]],  # Empty cell in the top-right
-        vertical_spacing=0.2, horizontal_spacing=0.2
+        vertical_spacing=0.1, horizontal_spacing=0.1
     )
 
     # Add the traces from fig1 (Latitude vs Longitude) into the combined plot
