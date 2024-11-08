@@ -160,6 +160,7 @@ def main():
         do_topography_mapping: int = st.checkbox(label="Enable Topography", value=False)
         buffer_factor = st.number_input("Topography Overlap Buffer Size", 0.0, 2.0, 0.1)
 
+    with st.sidebar.expander("Graph Parameters"):
         dp.interactive_3d_dot_size = st.slider("3D Graph Dot Size", 1, 15, 5)
         dp.interactive_2d_dot_size = st.slider("2D Graph Dot Size", 1, 15, 8)
 
