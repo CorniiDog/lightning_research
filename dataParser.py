@@ -391,10 +391,16 @@ def color_df(df: pd.DataFrame, identifier: str) -> pd.DataFrame:
 
         scalar = (time_num - start_time)/(end_time - start_time)
 
-        color = '#{:02x}{:02x}{:02x}'.format(int(255), int(255-255*scalar), int(255-255*scalar))
-        return [f'background-color: {color}' for _ in row]
+        background_color = '#{:02x}{:02x}{:02x}'.format(int(255), int(255-255*scalar), int(255-255*scalar))
+        # Combine background color and text color styles
 
-    df.style.set_properties(**{'color': 'black'})
+        if scalar < 0.5:
+            text_color = 'black'
+        else:
+            text_color = 'white'
+
+        style = f'background-color: {background_color}; color: {text_color};'
+        return [style for _ in row]
 
     # Apply the color function to entire rows and return the styled DataFrame
     return df.style.apply(color_row, axis=1)
