@@ -1,4 +1,4 @@
-import os
+import os, io
 from datetime import datetime
 from typing import List, Tuple
  # dataParser.py
@@ -160,9 +160,9 @@ def main():
         do_topography_mapping: int = st.checkbox(label="Enable Topography", value=False)
         buffer_factor = st.number_input("Topography Overlap Buffer Size", 0.0, 2.0, 0.1)
 
-    with st.sidebar.expander("Graph Parameters"):
-        dp.interactive_3d_dot_size = st.slider("3D Graph Dot Size", 1, 15, 5)
-        dp.interactive_2d_dot_size = st.slider("2D Graph Dot Size", 1, 15, 8)
+    with st.sidebar.expander("Graph Parameters", expanded=True):
+        dp.interactive_3d_dot_size = st.slider("Dot Size", 1, 15, 5)
+        dp.interactive_2d_dot_size = int(dp.interactive_3d_dot_size * (8/5))
 
     # Update the dp.filters and dp.count_required dynamically
     filters = [
@@ -281,14 +281,28 @@ def main():
             col2.write("Parsed Data:")
             col2.dataframe(dp.color_df(data_result, "mask"))
 
+
+            col2col1, col2col2 = col2.columns(2)
+
             # Option to download the DataFrame as a CSV
             csv_output = data_result.to_csv(index=False)
-            col2.download_button(
+            col2col1.download_button(
                 label="Download CSV",
                 data=csv_output,
                 file_name=f"{mask}_{timeline_start[0]}_{timeline_start[1]}.csv",
                 mime="text/csv",
             )
+
+            excel_output = io.BytesIO()
+            data_result.to_excel(excel_output, index=False)
+            excel_output.seek(0)
+            col2col2.download_button(
+                label="Download Excel",
+                data=excel_output,
+                file_name=f"{mask}_{timeline_start[0]}_{timeline_start[1]}.xlsx",
+                mime="xlsx",
+            )
+
 
             # Displaying figure
             fig = None
