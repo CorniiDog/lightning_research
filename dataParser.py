@@ -379,18 +379,22 @@ def generate_colors(num_colors):
 
 def color_df(df: pd.DataFrame, identifier: str) -> pd.DataFrame:
     """Apply unique colors to rows in the DataFrame based on the `identifier` column values."""
-    # Get the unique mask/identifier values
-    unique_values = df[identifier].unique()
-
-    # Assign a unique dark color to each unique value
-    value_colors = {val: color for val, color in zip(unique_values, generate_colors(num_colors=len(unique_values)))}
+    
+    times = df[seconds_since_start_of_day_header]
+    start_time = np.min(times)
+    end_time = np.max(times)
+    
 
     # Function to apply row color based on the identifier value
     def color_row(row):
-        value = row[identifier]
-        if value in value_colors:
-            return [f'background-color: {value_colors[value]}' for _ in row]
-        return [''] * len(row)
+        time_num = row[seconds_since_start_of_day_header]
+
+        scalar = (time_num - start_time)/(end_time - start_time)
+
+        color = '#{:02x}{:02x}{:02x}'.format(int(255), int(255-255*scalar), int(255-255*scalar))
+        return [f'background-color: {color}' for _ in row]
+
+    df.style.set_properties(**{'color': 'black'})
 
     # Apply the color function to entire rows and return the styled DataFrame
     return df.style.apply(color_row, axis=1)
@@ -569,7 +573,7 @@ def get_params(df:pd.DataFrame, buffer_factor = 0.0):
     return params
 
 @st.cache_data
-def add_topography(fig, df:pd.DataFrame, buffer_factor, downsampling_factor: int, lat=True, lon=True, alt=True):
+def add_topography(fig, df:pd.DataFrame, buffer_factor: float, lat=True, lon=True, alt=True):
     params = get_params(df=df, buffer_factor=buffer_factor)
     
     for da in generate_integer_chunks(params):
@@ -581,11 +585,17 @@ def add_topography(fig, df:pd.DataFrame, buffer_factor, downsampling_factor: int
         latitudes = da.y.values
         longitudes = da.x.values
 
-        # Downsample the topography data for faster plotting
-        # Adjust the factor based on your performance needs
-        elevation_data_downsampled = elevation_data[::downsampling_factor, ::downsampling_factor]
-        latitudes_downsampled = latitudes[::downsampling_factor]
-        longitudes_downsampled = longitudes[::downsampling_factor]
+        with st.spinner("Restraining to a maximum of 1000 topography points"):
+            forced_compression = 1000
+            if len(longitudes) > forced_compression:
+                secondary_downsampling = math.ceil(len(longitudes) / forced_compression)
+                elevation_data_downsampled = elevation_data[::secondary_downsampling, ::secondary_downsampling]
+                latitudes_downsampled = latitudes[::secondary_downsampling]
+                longitudes_downsampled = longitudes[::secondary_downsampling]
+            else:
+                elevation_data_downsampled = elevation_data
+                latitudes_downsampled = latitudes
+                longitudes_downsampled = longitudes
 
         # Find indices of latitudes within the bounds
         lat_mask = (latitudes_downsampled >= params['south']) & (latitudes_downsampled <= params['north'])
@@ -634,7 +644,7 @@ Presumably the 2d dot radius, in pixels(?)
 """
 
 @st.cache_data
-def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, buffer_factor:float, downsampling_factor: int, do_topography=True, lat=True, lon=True, alt=False):
+def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, buffer_factor:float, do_topography=True, lat=True, lon=True, alt=False):
     """
     Create an interactive 2D plot based on the selected axes, colored by the identifier.
 
@@ -672,7 +682,7 @@ def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, buffer_factor:f
     if lat and lon:
         # If do_topography is True, plot the topography data
         if do_topography:
-            fig = add_topography(fig, df,buffer_factor, downsampling_factor, lat, lon, alt)
+            fig = add_topography(fig, df,buffer_factor, lat, lon, alt)
 
         # If cities data is available, plot the cities
         if cities_file:
@@ -716,9 +726,7 @@ def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, buffer_factor:f
         fig.update_yaxes(range=lat_range, fixedrange=True)    # Generate colors for the data points
         fig.add_trace(go.Scatter(x=[0, 0], y=lat_range, mode='markers',
                          marker=dict(opacity=0), showlegend=False))  # Invisible points
-    unique_values = df[identifier].unique()
-    value_colors = {val: color for val, color in zip(unique_values, generate_colors(len(unique_values)))}
-
+        
     # Limit the number of points for performance
     max_points = 10000  # Adjust based on performance needs
     if len(df) > max_points:
@@ -728,18 +736,22 @@ def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, buffer_factor:f
         df_sampled = df
 
     # Plot the data points
-    for value, color in value_colors.items():
-        subset = df_sampled[df_sampled[identifier] == value]
-        if subset.empty:
-            continue
-        fig.add_trace(go.Scatter(
-            x=subset[x_axis],
-            y=subset[y_axis],
-            mode='markers',
-            marker=dict(size=interactive_2d_dot_size, color=color, opacity=1.0),
-            name=f'{identifier} {value}',
-            showlegend=False
-        ))
+    fig.add_trace(go.Scatter(
+        x=df_sampled[x_axis],
+        y=df_sampled[y_axis],
+        mode='markers',
+        marker=dict(
+                size=interactive_2d_dot_size,
+                color=df_sampled[seconds_since_start_of_day_header],
+                colorscale=[
+                    [0.0, 'rgb(255, 0, 0)'],
+                    [1.0, 'rgb(255, 255, 255)']
+                ],
+                opacity=1
+            ),
+        name=f'{identifier} {df_sampled[identifier][0]}',
+        showlegend=False
+    ))
     
 
     # Update the layout
@@ -750,17 +762,13 @@ def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, buffer_factor:f
         legend_title=identifier
     )
 
-    fig.update_traces(marker=dict(size=interactive_2d_dot_size,
-                              line=dict(width=1,
-                                        color='white')),
-                  selector=dict(mode='markers'))
     return fig
 
 @st.cache_data
-def get_3_axis_plot(df:pd.DataFrame, identifier:str, buffer_factor:float, downsampling_factor:int, do_topography=True):
-    lonalt_fig = get_interactive_2d_figure(df, identifier, buffer_factor, downsampling_factor, do_topography=do_topography, lat=False, lon=True, alt=True)
-    latlon_fig = get_interactive_2d_figure(df, identifier, buffer_factor, downsampling_factor, do_topography=do_topography, lat=True, lon=True, alt=False)
-    latalt_fig = get_interactive_2d_figure(df, identifier, buffer_factor, downsampling_factor, do_topography=do_topography, lat=True, lon=False, alt=True)
+def get_3_axis_plot(df:pd.DataFrame, identifier:str, buffer_factor:float, do_topography=True):
+    lonalt_fig = get_interactive_2d_figure(df, identifier, buffer_factor, do_topography=do_topography, lat=False, lon=True, alt=True)
+    latlon_fig = get_interactive_2d_figure(df, identifier, buffer_factor, do_topography=do_topography, lat=True, lon=True, alt=False)
+    latalt_fig = get_interactive_2d_figure(df, identifier, buffer_factor, do_topography=do_topography, lat=True, lon=False, alt=True)
 
     fig_combined = make_subplots(
         rows=3, cols=3,
@@ -801,7 +809,7 @@ Presumably the 3d dot radius, in pixels(?)
 """
 
 @st.cache_data
-def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, buffer_factor: float, downsampling_factor:int, do_topography=True):
+def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, buffer_factor: float, do_topography=True):
     """
     Create an interactive 3D scatter plot for latitude, longitude, and altitude, colored by mask.
 
@@ -817,7 +825,7 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, buffer_factor: 
     params = get_params(df, buffer_factor)
 
     if do_topography:
-        fig = add_topography(fig, df, buffer_factor, downsampling_factor)
+        fig = add_topography(fig, df, buffer_factor)
 
 
     # If cities are able to be loaded, then load cities
@@ -857,12 +865,6 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, buffer_factor: 
                 
             ))
 
-
-
-    # Generate colors for scatter points (lightning data)
-    unique_values = df[identifier].unique()
-    value_colors = {val: color for val, color in zip(unique_values, generate_colors(len(unique_values)))}
-
     #  Limit the number of scatter points (lightning data) for faster plotting
     max_points = 1000  # Adjust based on performance needs
     if len(df) > max_points:
@@ -872,22 +874,21 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, buffer_factor: 
         df_sampled = df
 
     #  Overlay the lightning data (scatter points) on top of the topography surface
-    for mask_value, color in value_colors.items():
-        subset = df_sampled[df_sampled[identifier] == mask_value]  # Subset of data matching the current mask_value
-
-        if subset.empty:
-            continue  # Skip if no data for this mask_value
-        fig.add_trace(go.Scatter3d(
-            x=subset['lon'],    # Longitude corresponds to x-axis
-            y=subset['lat'],    # Latitude corresponds to y-axis
-            z=subset['alt(m)'], # Altitude corresponds to z-axis
+    fig.add_trace(go.Scatter3d(
+            x=df_sampled['lon'],    # Longitude corresponds to x-axis
+            y=df_sampled['lat'],    # Latitude corresponds to y-axis
+            z=df_sampled['alt(m)'], # Altitude corresponds to z-axis
             mode='markers',
             marker=dict(
                 size=interactive_3d_dot_size,
-                color=color,
+                color=df_sampled[seconds_since_start_of_day_header],
+                colorscale=[
+                    [0.0, 'rgb(255, 0, 0)'],
+                    [1.0, 'rgb(255, 255, 255)']
+                ],
                 opacity=1
             ),
-            name=f'{identifier} {mask_value}',
+            name=f'{identifier} {df_sampled["mask"][0]}',
             showlegend=False
         ))
 
@@ -915,11 +916,6 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, buffer_factor: 
     ),
     height=400,
     )
-
-    fig.update_traces(marker=dict(size=interactive_3d_dot_size,
-                              line=dict(width=1,
-                                        color='white')),
-                  selector=dict(mode='markers'))
 
     return fig
 

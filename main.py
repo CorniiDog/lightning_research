@@ -1,29 +1,29 @@
 import os
-import pandas as pd
-import dataParser as dp # dataParser.py
-import streamlit as st
-import numpy as np
 from datetime import datetime
-from streamlit_timeline import st_timeline
+from typing import List, Tuple
+ # dataParser.py
+import dataParser as dp
+import numpy as np
+import pandas as pd
+import streamlit as st
 from dateutil.relativedelta import relativedelta
-from typing import (
-    Dict,
-    Callable,
-    Any,
-    Tuple,
-    List,
-)  # For explicit types to rigid-ify the coding process
+from streamlit_timeline import st_timeline
+  # For explicit types to rigid-ify the coding process
 
 st.set_page_config(
     page_title=None, page_icon=None, layout="wide", initial_sidebar_state="auto", menu_items=None
 )
 
-st.markdown(f'''
+st.markdown(
+    f'''
     <style>
         section[data-testid="stSidebar"] .css-ng1t4o {{width: 14rem;}}
         section[data-testid="stSidebar"] .css-1d391kg {{width: 14rem;}}
     </style>
-''',unsafe_allow_html=True)
+''',
+    unsafe_allow_html=True,
+)
+
 
 st.title("Connor White's Lightning Data Parser")
 
@@ -71,52 +71,52 @@ dat_files = [f for f in os.listdir(path=lightning_data_folder) if f.endswith(dat
 st.sidebar.header("Parameters")
 
 
-
 def main():
 
     dp.polish_data_cache(lightning_data_folder=lightning_data_folder)
 
     with st.sidebar.expander("Manage `.dat` Files", expanded=False):
-            # Section: File Upload
-            st.header("Upload a `.dat` File")
-            uploaded_file = st.file_uploader("", type="dat")
-            
-            if uploaded_file is not None:
-                save_uploaded_file(uploaded_file)
-                st.success(f"File '{uploaded_file.name}' uploaded successfully!")
+        # Section: File Upload
+        st.header("Upload a `.dat` File")
+        uploaded_file = st.file_uploader("", type="dat")
 
-            st.divider()
+        if uploaded_file is not None:
+            save_uploaded_file(uploaded_file)
+            st.success(f"File '{uploaded_file.name}' uploaded successfully!")
 
-            st.header("Delete a `.dat` File")
-            
-            # Streamlit file selector
-            selected_file = st.selectbox("Select a data file:", dat_files)
+        st.divider()
 
-            # Option to delete the selected file
-            if st.button(f"Delete `{selected_file}`"):
-                st.error("Do you really want to delete this file?")
-                if st.button(f"Yes, delete `{selected_file}`"):
-                    if delete_file(selected_file):
-                        st.success(f"File '{selected_file}' deleted successfully!")
-                        dp.polish_data_cache(lightning_data_folder=lightning_data_folder)
-                        st.rerun()
+        st.header("Delete a `.dat` File")
 
-                    else:
-                        st.error(f"Error: Could not delete file '{selected_file}'.")
+        # Streamlit file selector
+        selected_file = st.selectbox("Select a data file:", dat_files)
+
+        # Option to delete the selected file
+        if st.button(f"Delete `{selected_file}`"):
+            st.error("Do you really want to delete this file?")
+            if st.button(f"Yes, delete `{selected_file}`"):
+                if delete_file(selected_file):
+                    st.success(f"File '{selected_file}' deleted successfully!")
+                    dp.polish_data_cache(lightning_data_folder=lightning_data_folder)
+                    st.rerun()
+
+                else:
+                    st.error(f"Error: Could not delete file '{selected_file}'.")
 
     with st.sidebar.expander("File/Date Select", expanded=True):
 
         formatted_files = []
         for i in range(len(dat_files)):
             file = dat_files[i]
-            formatted_files.append(f"{dp.get_start_date_label(lightning_data_folder, file)}: {file}")
+            formatted_files.append(
+                f"{dp.get_start_date_label(lightning_data_folder, file)}: {file}"
+            )
 
         selected_files = st.multiselect("Select files", formatted_files)
 
         for i in range(len(selected_files)):
-            selected_file:str = selected_files[i]
+            selected_file: str = selected_files[i]
             selected_files[i] = selected_file.split(": ")[-1]
-
 
         now: datetime = datetime.now()
 
@@ -129,7 +129,6 @@ def main():
         if len(selected_files) == 0:
             approved_files = dat_files
 
-
     with st.sidebar.expander("Filtering Parameters", expanded=True):
         chi_min: int = st.number_input("Reduced chi^2 min", 0, 100, 0)
         chi_max: int = st.number_input("Reduced chi^2 max", 0, 1000, 50)
@@ -138,9 +137,18 @@ def main():
         mask_count_min: int = st.slider("Mask minimum occurances", 2, 10, 4)
 
     with st.sidebar.expander("Lightning Parameters", expanded=True):
-        lightning_max_strike_time = st.number_input("Lightning maximum allowed strike time between points (s)", 0.0, 2.0, 0.15)
-        lightning_max_strike_distance = st.number_input("Lightning maximum allowed strike distance between points (km)", 0.0, 200.0, 50.0) * 1000.0
-        lightning_minimum_speed = st.number_input("Lightning minimum allowed speed between points (m/s)", 0.0, 299792458.0, 299792.458)
+        lightning_max_strike_time = st.number_input(
+            "Lightning maximum allowed strike time between points (s)", 0.0, 2.0, 0.15
+        )
+        lightning_max_strike_distance = (
+            st.number_input(
+                "Lightning maximum allowed strike distance between points (km)", 0.0, 200.0, 50.0
+            )
+            * 1000.0
+        )
+        lightning_minimum_speed = st.number_input(
+            "Lightning minimum allowed speed between points (m/s)", 0.0, 299792458.0, 299792.458
+        )
         min_points_for_lightning = mask_count_min
 
     with st.sidebar.expander(label="Timeline Parameters", expanded=True):
@@ -150,11 +158,8 @@ def main():
 
     with st.sidebar.expander("Topography Parameters", expanded=True):
         do_topography_mapping: int = st.checkbox(label="Enable Topography", value=False)
-        downsampling_factor = st.number_input(
-            "Topography Downsampling (Compression) Factor", 1, 100, 1
-        )
         buffer_factor = st.number_input("Topography Overlap Buffer Size", 0.0, 2.0, 0.1)
-        
+
         dp.interactive_3d_dot_size = st.slider("3D Graph Dot Size", 1, 15, 5)
         dp.interactive_2d_dot_size = st.slider("2D Graph Dot Size", 1, 15, 8)
 
@@ -175,23 +180,35 @@ def main():
 
     lightning_strikes: List[pd.DataFrame] = []
     strike_times: List[Tuple[str, str]] = []
-    
+
     # Cache files for processing the month
     for file in approved_files:
         if len(approved_files) > 0 and file not in approved_files:
             continue
 
         with st.spinner(f"Retreiving data for `{file}`"):
-            data_result: pd.DataFrame = dp.get_dataframe(lightning_data_folder=lightning_data_folder, file_name=file, count_required=count_required, filters=filters, start_datetime=start_datetime, end_datetime=end_datetime)
+            data_result: pd.DataFrame = dp.get_dataframe(
+                lightning_data_folder=lightning_data_folder,
+                file_name=file,
+                count_required=count_required,
+                filters=filters,
+                start_datetime=start_datetime,
+                end_datetime=end_datetime,
+            )
 
         if data_result is not None and len(data_result) > 0:
-          with st.spinner(f"Parsing lightning data for `{file}`"):
-              sub_strikes, substrike_times = dp.get_strikes(df=data_result, lightning_max_strike_time=lightning_max_strike_time, lightning_max_strike_distance=lightning_max_strike_distance, lightning_minimum_speed=lightning_minimum_speed, min_points_for_lightning=min_points_for_lightning)
-              
-              if len(substrike_times) > 0:
-                lightning_strikes += sub_strikes # Concatenate to lightning_strikes
-                strike_times += substrike_times
+            with st.spinner(f"Parsing lightning data for `{file}`"):
+                sub_strikes, substrike_times = dp.get_strikes(
+                    df=data_result,
+                    lightning_max_strike_time=lightning_max_strike_time,
+                    lightning_max_strike_distance=lightning_max_strike_distance,
+                    lightning_minimum_speed=lightning_minimum_speed,
+                    min_points_for_lightning=min_points_for_lightning,
+                )
 
+                if len(substrike_times) > 0:
+                    lightning_strikes += sub_strikes  # Concatenate to lightning_strikes
+                    strike_times += substrike_times
 
     if len(lightning_strikes) > 0:
 
@@ -206,7 +223,7 @@ def main():
                     "content": f"{lightning_strikes[i]['mask'][0]} {timeline_start[1]}",
                     "start": strike_times[i][0],
                 }
-                if i > max_calendar_items-1:
+                if i > max_calendar_items - 1:
                     st.warning(f"Only displaying maximum of {max_calendar_items} items")
                     break
                 items.append(data_dict)
@@ -232,55 +249,67 @@ def main():
                     if i == index:
                         continue
 
-                    strike_time = datetime.strptime(strike_times[i][0], "%Y-%m-%dT%H:%M:%S").timestamp()
+                    strike_time = datetime.strptime(
+                        strike_times[i][0], "%Y-%m-%dT%H:%M:%S"
+                    ).timestamp()
                     if np.abs(unix_time - strike_time) < fine_tune_seconds:
 
                         timeline_start = strike_times[i][0].split("T")
                         name = f"{lightning_strikes[i]['mask'][0]} {timeline_start[1]}"
                         index_lookup[name] = i
 
-                strike_name: str = st.selectbox(f"Fine-tune selection within `{fine_tune_seconds}` seconds", list(index_lookup.keys()))
+                strike_name: str = st.selectbox(
+                    f"Fine-tune selection within `{fine_tune_seconds}` seconds",
+                    list(index_lookup.keys()),
+                )
                 index: int = index_lookup[strike_name]
                 timeline_start = strike_times[index][0].split("T")
                 data_result: pd.DataFrame = lightning_strikes[index]
-                mask = data_result['mask'][0]
+                mask = data_result["mask"][0]
             else:
                 strike_found = False
 
         if strike_found:
-            st.header(f"Lightning strike for mask `{mask}` on `{timeline_start[0]}` at `{timeline_start[1]}` UTC")
+            st.header(
+                f"Lightning strike for mask `{mask}` on `{timeline_start[0]}` at `{timeline_start[1]}` UTC"
+            )
 
             col1, col2 = st.columns(2)
 
             # Display the parsed DataFrame
             col2.write("Parsed Data:")
-            col2.dataframe(dp.color_df(data_result, 'mask'))
-            
+            col2.dataframe(dp.color_df(data_result, "mask"))
+
             # Option to download the DataFrame as a CSV
             csv_output = data_result.to_csv(index=False)
             col2.download_button(
                 label="Download CSV",
                 data=csv_output,
                 file_name=f"{mask}_{timeline_start[0]}_{timeline_start[1]}.csv",
-                mime="text/csv"
+                mime="text/csv",
             )
 
             # Displaying figure
             fig = None
-            with st.spinner('Indexing Topography Data...'):
+            with st.spinner('Creating 3D Figure Data'):
                 # Plot 3D scatter
-                fig = dp.get_interactive_3d_figure(data_result, 'mask', buffer_factor, downsampling_factor, do_topography=do_topography_mapping)
+                fig = dp.get_interactive_3d_figure(
+                    data_result, "mask", buffer_factor, do_topography=do_topography_mapping
+                )
 
+            with st.spinner("Plotting 3D Figure"):
+                # Display the 3D plot in Streamlit
+                col1.plotly_chart(fig)
 
-            # Display the 3D plot in Streamlit
-            col1.plotly_chart(fig)
+            with st.spinner("Creating 2D Figure Data"):
+                lonalt_fig = dp.get_3_axis_plot(
+                    data_result, "mask", buffer_factor, do_topography=do_topography_mapping
+                )
 
-            col1, col2 = st.columns(2)
+            with st.spinner("Plitting 2D Figure"):
+                st.plotly_chart(lonalt_fig)
 
-            lonalt_fig = dp.get_3_axis_plot(data_result, 'mask', buffer_factor, downsampling_factor, do_topography=do_topography_mapping)
-            st.plotly_chart(lonalt_fig)
-
-    else: # No lightning data
+    else:  # No lightning data
         st.warning("Data too restrained. Modify parameters on left sidebar.")
 
     st.divider()
