@@ -164,6 +164,11 @@ power_dbw_header = 'P(dBW)'
 The header for power in decibel-watts
 """
 
+dot_size_min = 3
+"""
+The minimum dot size
+"""
+
 def parse_data(
     f, data_headers: list[str], date_start: datetime) -> pd.DataFrame:
     """
@@ -251,7 +256,7 @@ def parse_data(
             power_watts = math.pow(10.0, power/10.0)
         else:
             power_watts = None
-        dict_result["P(W)"].append(power_watts)
+        dict_result["P(W)"].append(power_watts) 
 
     df = pd.DataFrame(dict_result) # Create dataframe
     
@@ -405,13 +410,13 @@ def color_df(df: pd.DataFrame, identifier: str) -> pd.DataFrame:
 
         scalar = (time_num - start_time)/(end_time - start_time)
 
-        background_color = '#{:02x}{:02x}{:02x}'.format(int(255), int(255-255*scalar), int(255-255*scalar))
+        background_color = '#{:02x}{:02x}{:02x}'.format(int(255), int(255*scalar), int(255*scalar))
         # Combine background color and text color styles
 
         if scalar < 0.5:
-            text_color = 'black'
-        else:
             text_color = 'white'
+        else:
+            text_color = 'black'
 
         style = f'background-color: {background_color}; color: {text_color};'
         return [style for _ in row]
@@ -663,7 +668,6 @@ interactive_2d_dot_size=5
 Presumably the 2d dot radius, in pixels(?)
 """
 
-@st.cache_data
 def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, buffer_factor:float, do_topography=True, lat=True, lon=True, alt=False):
     """
     Create an interactive 2D plot based on the selected axes, colored by the identifier.
@@ -755,20 +759,33 @@ def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, buffer_factor:f
     else:
         df_sampled = df
 
+
+    dot_sizes = list(np.nan_to_num(df_sampled["P(W)"], copy=True, nan=0.0, posinf=None, neginf=None))
+    max_size = max(dot_sizes)
+    for i in range(len(dot_sizes)):
+        if max_size == 0:
+            break
+        dot_sizes[i] *= (interactive_2d_dot_size / max_size)
+        dot_sizes[i] += dot_size_min
+
     # Plot the data points
     fig.add_trace(go.Scatter(
         x=df_sampled[x_axis],
         y=df_sampled[y_axis],
         mode='markers',
         marker=dict(
-                size=interactive_2d_dot_size,
+                size=dot_sizes,
                 color=df_sampled[seconds_since_start_of_day_header],
                 colorscale=[
                     [0.0, 'rgb(255, 0, 0)'],
                     [1.0, 'rgb(255, 255, 255)']
                 ],
                 opacity=1
+                
             ),
+        line=dict(
+            width=0
+        ),
         name=f'{identifier} {df_sampled[identifier][0]}',
         showlegend=False
     ))
@@ -784,7 +801,6 @@ def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, buffer_factor:f
 
     return fig
 
-@st.cache_data
 def get_3_axis_plot(df:pd.DataFrame, identifier:str, buffer_factor:float, do_topography=True):
     lonalt_fig = get_interactive_2d_figure(df, identifier, buffer_factor, do_topography=do_topography, lat=False, lon=True, alt=True)
     latlon_fig = get_interactive_2d_figure(df, identifier, buffer_factor, do_topography=do_topography, lat=True, lon=True, alt=False)
@@ -828,7 +844,6 @@ interactive_3d_dot_size=5
 Presumably the 3d dot radius, in pixels(?)
 """
 
-@st.cache_data
 def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, buffer_factor: float, do_topography=True):
     """
     Create an interactive 3D scatter plot for latitude, longitude, and altitude, colored by mask.
@@ -886,12 +901,21 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, buffer_factor: 
             ))
 
     #  Limit the number of scatter points (lightning data) for faster plotting
-    max_points = 1000  # Adjust based on performance needs
+    max_points = 2000  # Adjust based on performance needs
     if len(df) > max_points:
         df_sampled = df.sample(n=max_points, random_state=42)
         print(f"Sampling {max_points} out of {len(df)} lightning points for plotting.")
     else:
         df_sampled = df
+    
+    dot_sizes = list(np.nan_to_num(df_sampled["P(W)"], copy=True, nan=0.0, posinf=None, neginf=None))
+    max_size = max(dot_sizes)
+    for i in range(len(dot_sizes)):
+        if max_size == 0:
+            break
+        dot_sizes[i] *= (interactive_3d_dot_size / max_size)
+        dot_sizes[i] += dot_size_min
+
 
     #  Overlay the lightning data (scatter points) on top of the topography surface
     fig.add_trace(go.Scatter3d(
@@ -900,13 +924,16 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, buffer_factor: 
             z=df_sampled['alt(m)'], # Altitude corresponds to z-axis
             mode='markers',
             marker=dict(
-                size=interactive_3d_dot_size,
+                size=dot_sizes,
                 color=df_sampled[seconds_since_start_of_day_header],
                 colorscale=[
                     [0.0, 'rgb(255, 0, 0)'],
                     [1.0, 'rgb(255, 255, 255)']
                 ],
                 opacity=1
+            ),
+                line=dict(
+                width=0
             ),
             name=f'{identifier} {df_sampled["mask"][0]}',
             showlegend=False

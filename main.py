@@ -163,6 +163,7 @@ def main():
     with st.sidebar.expander("Graph Parameters", expanded=True):
         dp.interactive_3d_dot_size = st.slider("Dot Size", 1, 15, 5)
         dp.interactive_2d_dot_size = int(dp.interactive_3d_dot_size * (8/5))
+        dp.dot_size_min = st.slider("Dot Minimum Size", 0,  15, 3)
 
     # Update the dp.filters and dp.count_required dynamically
     filters = [
