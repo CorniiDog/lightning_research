@@ -159,6 +159,11 @@ The header for altitude
 Default: `alt(m)`
 """
 
+power_dbw_header = 'P(dBW)'
+"""
+The header for power in decibel-watts
+"""
+
 def parse_data(
     f, data_headers: list[str], date_start: datetime) -> pd.DataFrame:
     """
@@ -177,6 +182,7 @@ def parse_data(
     dict_result["month"] = []
     dict_result["day"] = []
     dict_result["unix"] = []
+    dict_result["P(W)"] = []
 
     dict_result['x(m)'] = []
     dict_result['y(m)'] = []
@@ -193,7 +199,7 @@ def parse_data(
         data_row = line.split()  # Splits the line into designated sections
         respective_time = date_start
 
-        lat, lon, alt = None, None, None
+        lat, lon, alt, power = None, None, None, None
 
         # Process and format from string to respectable type
         for i in range(len(data_row)):
@@ -218,7 +224,8 @@ def parse_data(
                     lon = data_cell
                 elif header == altitude_meters_header:
                     alt = data_cell
-
+                elif header == power_dbw_header:
+                    power = data_cell
 
         # Append to dictionary
         for i in range(len(data_row)):
@@ -238,6 +245,13 @@ def parse_data(
         dict_result["x(m)"].append(x)
         dict_result["y(m)"].append(y)
         dict_result["z(m)"].append(z)
+
+        # Reference: https://www.rapidtables.com/electric/dBW.html
+        if power:
+            power_watts = math.pow(10.0, power/10.0)
+        else:
+            power_watts = None
+        dict_result["P(W)"].append(power_watts)
 
     df = pd.DataFrame(dict_result) # Create dataframe
     
