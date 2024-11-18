@@ -964,6 +964,8 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, buffer_factor: 
     height=400,
     )
 
+    fig.update_traces(marker_line_width=0)
+
     return fig
 
 speed_of_light: float = 299792458.0 # m/s
