@@ -669,7 +669,7 @@ interactive_2d_dot_size=5
 Presumably the 2d dot radius, in pixels(?)
 """
 
-def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, buffer_factor:float, do_topography=True, lat=True, lon=True, alt=False):
+def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, buffer_factor:float, do_topography=True, lat=True, lon=True, alt=False, restrain_topography_points=True):
     """
     Create an interactive 2D plot based on the selected axes, colored by the identifier.
 
@@ -707,7 +707,7 @@ def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, buffer_factor:f
     if lat and lon:
         # If do_topography is True, plot the topography data
         if do_topography:
-            fig = add_topography(fig, df,buffer_factor, lat, lon, alt)
+            fig = add_topography(fig, df,buffer_factor, lat, lon, alt, restrain_topography_points=restrain_topography_points)
 
         # If cities data is available, plot the cities
         if cities_file:
