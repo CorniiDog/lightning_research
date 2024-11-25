@@ -598,7 +598,7 @@ def get_params(df:pd.DataFrame, buffer_factor = 0.0):
     return params
 
 @st.cache_data
-def add_topography(fig, df:pd.DataFrame, buffer_factor: float, lat=True, lon=True, alt=True):
+def add_topography(fig, df:pd.DataFrame, buffer_factor: float, lat=True, lon=True, alt=True, restrain_topography_points=True):
     params = get_params(df=df, buffer_factor=buffer_factor)
     
     for da in generate_integer_chunks(params):
@@ -610,17 +610,18 @@ def add_topography(fig, df:pd.DataFrame, buffer_factor: float, lat=True, lon=Tru
         latitudes = da.y.values
         longitudes = da.x.values
 
-        with st.spinner("Restraining to a maximum of 1000 topography points"):
-            forced_compression = 1000
-            if len(longitudes) > forced_compression:
+        
+        forced_compression = 1000
+        if len(longitudes) > forced_compression and restrain_topography_points:
+            with st.spinner("Restraining to a maximum of 1000 topography points"):
                 secondary_downsampling = math.ceil(len(longitudes) / forced_compression)
                 elevation_data_downsampled = elevation_data[::secondary_downsampling, ::secondary_downsampling]
                 latitudes_downsampled = latitudes[::secondary_downsampling]
                 longitudes_downsampled = longitudes[::secondary_downsampling]
-            else:
-                elevation_data_downsampled = elevation_data
-                latitudes_downsampled = latitudes
-                longitudes_downsampled = longitudes
+        else:
+            elevation_data_downsampled = elevation_data
+            latitudes_downsampled = latitudes
+            longitudes_downsampled = longitudes
 
         # Find indices of latitudes within the bounds
         lat_mask = (latitudes_downsampled >= params['south']) & (latitudes_downsampled <= params['north'])

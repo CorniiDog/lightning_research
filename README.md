@@ -4,6 +4,8 @@ Connor White - Modular filtering algorithm, applied for space lightning
 
 This assumes that it will be running on a separate server, over an SSH session (ideally in VSCode).
 
+Note: This system uses Google's Earth Engine as it is more extensive and robust than AWS's services. However, if the option arises that the opposite is true, I will add support for AWS.
+
 ---
 
 ## Prequisites
@@ -21,7 +23,7 @@ It is recommended to run the project in a virtual environment to avoid versionin
 ```
 sudo apt install gzip 
 
-pip install gdown pandas PyQt5 matplotlib plotly streamlit bmi-topography geopandas fsspec requests aiohttp pyproj openpyxl streamlit-vis-timeline streamlit-chunk-file-uploader earthengine-api --no-cache-dir
+pip install gdown pandas PyQt5 matplotlib plotly streamlit bmi-topography geopandas fsspec requests aiohttp pyproj openpyxl streamlit-vis-timeline streamlit-chunk-file-uploader earthengine-api s3fs dask netcdf4 cartopy metpy --no-cache-dir
 ```
 
 #### Opentopography API
