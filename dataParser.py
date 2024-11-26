@@ -669,7 +669,9 @@ interactive_2d_dot_size=5
 Presumably the 2d dot radius, in pixels(?)
 """
 
-def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, buffer_factor:float, do_topography=True, lat=True, lon=True, alt=False, restrain_topography_points=True):
+
+
+def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, buffer_factor:float, do_topography=True, lat=True, lon=True, alt=False, restrain_topography_points=True, row_range: List[int] | None = None):
     """
     Create an interactive 2D plot based on the selected axes, colored by the identifier.
 
@@ -703,6 +705,9 @@ def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, buffer_factor:f
 
     lon_range = [params['west'], params['east']]
     lat_range = [params['south'], params['north']]
+
+    if row_range:
+        df = df.iloc[row_range[0]: row_range[1]].copy()
 
     if lat and lon:
         # If do_topography is True, plot the topography data
@@ -762,12 +767,23 @@ def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, buffer_factor:f
 
 
     dot_sizes = list(np.nan_to_num(df_sampled["P(W)"], copy=True, nan=0.0, posinf=None, neginf=None))
-    max_size = max(dot_sizes)
+    
+    if dot_sizes and len(dot_sizes) > 0:  # Check if dot_sizes is not empty
+        max_size = max(dot_sizes)
+    else:
+        max_size = 1  # Default value if the sequence is empty
+
     for i in range(len(dot_sizes)):
         if max_size == 0:
             break
         dot_sizes[i] *= (interactive_2d_dot_size / max_size)
         dot_sizes[i] += dot_size_min
+
+    if len(df_sampled[identifier]) > 0:
+        name = df_sampled[identifier][0]
+    else:
+        name = "No Data Points"
+    
 
     # Plot the data points
     fig.add_trace(go.Scatter(
@@ -787,7 +803,7 @@ def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, buffer_factor:f
         line=dict(
             width=0
         ),
-        name=f'{identifier} {df_sampled[identifier][0]}',
+        name=f'{identifier} {name}',
         showlegend=False
     ))
     
@@ -802,10 +818,10 @@ def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, buffer_factor:f
 
     return fig
 
-def get_3_axis_plot(df:pd.DataFrame, identifier:str, buffer_factor:float, do_topography=True):
-    lonalt_fig = get_interactive_2d_figure(df, identifier, buffer_factor, do_topography=do_topography, lat=False, lon=True, alt=True)
-    latlon_fig = get_interactive_2d_figure(df, identifier, buffer_factor, do_topography=do_topography, lat=True, lon=True, alt=False)
-    latalt_fig = get_interactive_2d_figure(df, identifier, buffer_factor, do_topography=do_topography, lat=True, lon=False, alt=True)
+def get_3_axis_plot(df:pd.DataFrame, identifier:str, buffer_factor:float, do_topography=True, restrain_topography_points=True, row_range: List[int] | None = None):
+    lonalt_fig = get_interactive_2d_figure(df, identifier, buffer_factor, do_topography=do_topography, lat=False, lon=True, alt=True, restrain_topography_points=restrain_topography_points, row_range=row_range)
+    latlon_fig = get_interactive_2d_figure(df, identifier, buffer_factor, do_topography=do_topography, lat=True, lon=True, alt=False, restrain_topography_points=restrain_topography_points, row_range=row_range)
+    latalt_fig = get_interactive_2d_figure(df, identifier, buffer_factor, do_topography=do_topography, lat=True, lon=False, alt=True, restrain_topography_points=restrain_topography_points, row_range=row_range)
 
     fig_combined = make_subplots(
         rows=3, cols=3,
@@ -910,13 +926,21 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, buffer_factor: 
         df_sampled = df
     
     dot_sizes = list(np.nan_to_num(df_sampled["P(W)"], copy=True, nan=0.0, posinf=None, neginf=None))
-    max_size = max(dot_sizes)
+    if dot_sizes and len(dot_sizes) > 0:  # Check if dot_sizes is not empty
+        max_size = max(dot_sizes)
+    else:
+        max_size = 1  # Default value if the sequence is empty
+
     for i in range(len(dot_sizes)):
         if max_size == 0:
             break
         dot_sizes[i] *= (interactive_3d_dot_size / max_size)
         dot_sizes[i] += dot_size_min
 
+    if len(df_sampled["mask"]) > 0:
+        name = df_sampled["mask"][0]
+    else:
+        name = "No Data Points"
 
     #  Overlay the lightning data (scatter points) on top of the topography surface
     fig.add_trace(go.Scatter3d(
@@ -936,7 +960,7 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, buffer_factor: 
                 line=dict(
                 width=0
             ),
-            name=f'{identifier} {df_sampled["mask"][0]}',
+            name=f'{identifier} {name}',
             showlegend=False
         ))
 

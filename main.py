@@ -1,13 +1,14 @@
 import os, io
 from datetime import datetime
 from typing import List, Tuple
- # dataParser.py
-import dataParser as dp
+import dataParser as dp # dataParser.py
 import numpy as np
 import pandas as pd
 import streamlit as st
 from dateutil.relativedelta import relativedelta
 from streamlit_timeline import st_timeline
+import imageio.v3 as iio
+
   # For explicit types to rigid-ify the coding process
 
 st.set_page_config(
@@ -324,6 +325,51 @@ def main():
 
             with st.spinner("Plitting 2D Figure"):
                 st.plotly_chart(lonalt_fig)
+
+            #if st.button("Generate gif"):
+            #    for i in range(len(data_result)):
+
+            max_length = st.number_input("Maximum gif length (s)", 0.5, 10.0, 2.0)
+            fps = st.number_input("Frames Per Second (fps)", 10, 60, 30)
+            
+            total_frames = int(max_length * fps)
+            step_amount = 1 / total_frames  # Step size from 0 to 1
+
+            if st.button("Generate gif"):
+                with st.spinner("Generating gif"):
+
+                    progress_text = "Generating Images:"
+                    my_bar = st.progress(0, text=progress_text)
+
+                    frames = []
+
+                    len_data_result = len(data_result)
+                    steps = np.linspace(0, 1, total_frames)  # Steps from 0 to 1
+                    indices = (steps * (len_data_result - 1)).astype(int)  # Map steps to data_result indices
+
+                    for i, idx in enumerate(indices):
+                        my_bar.progress((i + 1) / total_frames, text=f"{progress_text} {(100 * (i + 1) / total_frames):.1f}%")
+                        
+                        # Get the Figure object
+                        figure = dp.get_3_axis_plot(data_result, "mask", buffer_factor, do_topography=do_topography_mapping, restrain_topography_points=False, row_range=[0, idx])
+                        
+                        figure.update_layout(
+                            paper_bgcolor="black",  # Black background outside the plot
+                            plot_bgcolor="black",  # Black background inside the plot
+                            font=dict(color="white")  # White text for visibility
+                        )
+                                            
+                        buf = io.BytesIO()
+                        figure.write_image(buf, format='png')
+                        buf.seek(0)  # Reset buffer to start
+                        frames.append(iio.imread(buf))
+                        buf.close()
+                my_bar.empty()
+
+                gif_buffer = io.BytesIO()
+                iio.imwrite(gif_buffer, frames, format='GIF', duration=max_length)  # Adjust duration as needed
+                gif_buffer.seek(0)  # Reset buffer to start
+                st.image(gif_buffer)
 
     else:  # No lightning data
         st.warning("Data too restrained. Modify parameters on left sidebar.")
