@@ -8,6 +8,7 @@ import streamlit as st
 from dateutil.relativedelta import relativedelta
 from streamlit_timeline import st_timeline
 import imageio.v3 as iio
+import time
 
   # For explicit types to rigid-ify the coding process
 
@@ -159,7 +160,7 @@ def main():
 
     with st.sidebar.expander("Topography Parameters", expanded=True):
         do_topography_mapping: int = st.checkbox(label="Enable Topography", value=False)
-        buffer_factor = st.number_input("Topography Overlap Buffer Size", 0.0, 2.0, 0.1)
+        buffer_factor = st.number_input("Topography Overlap Size (lat/lon)", 0.0, 2.0, 0.1)
 
     with st.sidebar.expander("Graph Parameters", expanded=True):
         dp.interactive_3d_dot_size = st.slider("Dot Size", 1, 15, 5)
@@ -329,13 +330,17 @@ def main():
             #if st.button("Generate gif"):
             #    for i in range(len(data_result)):
 
+            st.divider()
+
+            st.header("Generate Gif")
+
             max_length = st.number_input("Maximum gif length (s)", 0.5, 10.0, 2.0)
-            fps = st.number_input("Frames Per Second (fps)", 10, 60, 30)
+            fps = st.number_input("Frames Per Second (fps)", 10, 60, 10)
+            repeat_gif = st.checkbox("Repeat", value=True)
             
             total_frames = int(max_length * fps)
-            step_amount = 1 / total_frames  # Step size from 0 to 1
 
-            if st.button("Generate gif"):
+            if st.button("Generate"):
                 with st.spinner("Generating gif"):
 
                     progress_text = "Generating Images:"
@@ -347,11 +352,26 @@ def main():
                     steps = np.linspace(0, 1, total_frames)  # Steps from 0 to 1
                     indices = (steps * (len_data_result - 1)).astype(int)  # Map steps to data_result indices
 
+                    time_elapsed = 0
                     for i, idx in enumerate(indices):
-                        my_bar.progress((i + 1) / total_frames, text=f"{progress_text} {(100 * (i + 1) / total_frames):.1f}%")
+                        if idx <= 1:
+                            continue
+
+                        time_start = time.time()
+
+                        pct_completion = (i + 1) / total_frames
+
+                        time_estimate = ""
+                        if pct_completion > 0 and time_elapsed > 0:
+                            est_seconds = int(time_elapsed * (1 - pct_completion) / pct_completion)
+                            minutes = est_seconds // 60
+                            seconds = est_seconds % 60
+                            time_estimate = f"(Estimate: {str(minutes).zfill(2)}:{str(seconds).zfill(2)}s)"
+                        
+                        my_bar.progress(pct_completion, text=f"{progress_text} {100 * pct_completion:.1f}% {time_estimate}")
                         
                         # Get the Figure object
-                        figure = dp.get_3_axis_plot(data_result, "mask", buffer_factor, do_topography=do_topography_mapping, restrain_topography_points=False, row_range=[0, idx])
+                        figure = dp.get_3_axis_plot(data_result, "mask", buffer_factor, do_topography=do_topography_mapping, row_range=[0, idx])
                         
                         figure.update_layout(
                             paper_bgcolor="black",  # Black background outside the plot
@@ -364,10 +384,13 @@ def main():
                         buf.seek(0)  # Reset buffer to start
                         frames.append(iio.imread(buf))
                         buf.close()
+
+                        time_elapsed += time.time() - time_start
                 my_bar.empty()
 
                 gif_buffer = io.BytesIO()
-                iio.imwrite(gif_buffer, frames, format='GIF', duration=max_length)  # Adjust duration as needed
+                loop_value = 0 if repeat_gif else 1  # 0 for infinite loop, 1 for no loop
+                iio.imwrite(gif_buffer, frames, format='GIF', fps=fps, loop=loop_value)
                 gif_buffer.seek(0)  # Reset buffer to start
                 st.image(gif_buffer)
 

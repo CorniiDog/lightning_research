@@ -597,9 +597,9 @@ def get_params(df:pd.DataFrame, buffer_factor = 0.0):
 
     return params
 
-@st.cache_data
-def add_topography(fig, df:pd.DataFrame, buffer_factor: float, lat=True, lon=True, alt=True, restrain_topography_points=True):
-    params = get_params(df=df, buffer_factor=buffer_factor)
+def add_topography(fig, df:pd.DataFrame, buffer_factor: float, lat=True, lon=True, alt=True, restrain_topography_points=True, params=None):
+    if not params:
+        params = get_params(df=df, buffer_factor=buffer_factor)
     
     for da in generate_integer_chunks(params):
 
@@ -712,7 +712,7 @@ def get_interactive_2d_figure(df: pd.DataFrame, identifier: str, buffer_factor:f
     if lat and lon:
         # If do_topography is True, plot the topography data
         if do_topography:
-            fig = add_topography(fig, df,buffer_factor, lat, lon, alt, restrain_topography_points=restrain_topography_points)
+            fig = add_topography(fig, df,buffer_factor, lat, lon, alt, restrain_topography_points=restrain_topography_points, params=params)
 
         # If cities data is available, plot the cities
         if cities_file:
@@ -989,7 +989,10 @@ def get_interactive_3d_figure(df: pd.DataFrame, identifier: str, buffer_factor: 
     height=400,
     )
 
-    fig.update_traces(marker_line_width=0)
+    try:
+        fig.update_traces(marker_line_width=0)
+    except:
+        pass
 
     return fig
 
