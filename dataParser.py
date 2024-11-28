@@ -615,9 +615,15 @@ def add_topography(fig, df:pd.DataFrame, buffer_factor: float, lat=True, lon=Tru
         if len(longitudes) > forced_compression and restrain_topography_points:
             with st.spinner("Restraining to a maximum of 1000 topography points"):
                 secondary_downsampling = math.ceil(len(longitudes) / forced_compression)
-                elevation_data_downsampled = elevation_data[::secondary_downsampling, ::secondary_downsampling]
-                latitudes_downsampled = latitudes[::secondary_downsampling]
-                longitudes_downsampled = longitudes[::secondary_downsampling]
+                rows = list(range(0, elevation_data.shape[0] - 1, secondary_downsampling)) + [elevation_data.shape[0] - 1]
+                cols = list(range(0, elevation_data.shape[1] - 1, secondary_downsampling)) + [elevation_data.shape[1] - 1]
+
+                # Use numpy.ix_ to index both dimensions
+                elevation_data_downsampled = elevation_data[np.ix_(rows, cols)]
+                # Include the last latitude and longitude if not already included
+                latitudes_downsampled = np.append(latitudes[::secondary_downsampling], latitudes[-1])
+                longitudes_downsampled = np.append(longitudes[::secondary_downsampling], longitudes[-1])
+
         else:
             elevation_data_downsampled = elevation_data
             latitudes_downsampled = latitudes

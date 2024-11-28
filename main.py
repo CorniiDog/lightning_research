@@ -330,69 +330,74 @@ def main():
             #if st.button("Generate gif"):
             #    for i in range(len(data_result)):
 
-            st.divider()
+            with st.expander("Generate Gif", expanded=False):
+                max_length = st.number_input("Maximum gif length (s)", 0.5, 10.0, 5.0)
+                fps = st.number_input("Frames Per Second (fps)", 10, 60, 10)
+                repeat_gif = st.checkbox("Repeat Gif", value=True)
+                use_full_resolution = not st.checkbox("Use Full Resolution Topography", value=False)
+                
+                total_frames = int(max_length * fps)
 
-            st.header("Generate Gif")
+                if st.button("Generate"):
+                    with st.spinner("Generating gif"):
 
-            max_length = st.number_input("Maximum gif length (s)", 0.5, 10.0, 2.0)
-            fps = st.number_input("Frames Per Second (fps)", 10, 60, 10)
-            repeat_gif = st.checkbox("Repeat", value=True)
-            
-            total_frames = int(max_length * fps)
+                        progress_text = "Generating Images:"
+                        my_bar = st.progress(0, text=progress_text)
 
-            if st.button("Generate"):
-                with st.spinner("Generating gif"):
+                        frames = []
 
-                    progress_text = "Generating Images:"
-                    my_bar = st.progress(0, text=progress_text)
+                        len_data_result = len(data_result)
+                        steps = np.linspace(0, 1, total_frames)  # Steps from 0 to 1
+                        indices = (steps * (len_data_result - 1)).astype(int)  # Map steps to data_result indices
 
-                    frames = []
+                        time_elapsed = 0
+                        for i, idx in enumerate(indices):
+                            if idx <= 1:
+                                continue
 
-                    len_data_result = len(data_result)
-                    steps = np.linspace(0, 1, total_frames)  # Steps from 0 to 1
-                    indices = (steps * (len_data_result - 1)).astype(int)  # Map steps to data_result indices
+                            time_start = time.time()
 
-                    time_elapsed = 0
-                    for i, idx in enumerate(indices):
-                        if idx <= 1:
-                            continue
+                            pct_completion = (i + 1) / total_frames
 
-                        time_start = time.time()
+                            time_estimate = ""
+                            if time_elapsed > 0 and pct_completion > 0.5:
+                                est_seconds = int(time_elapsed * (1 - pct_completion) / pct_completion)
+                                minutes = est_seconds // 60
+                                seconds = est_seconds % 60
+                                time_estimate = f"(Estimate: {str(minutes).zfill(2)}:{str(seconds).zfill(2)})"
+                            
+                            my_bar.progress(pct_completion, text=f"{progress_text} {100 * pct_completion:.1f}% {time_estimate}")
+                            
+                            # Get the Figure object
+                            figure = dp.get_3_axis_plot(data_result, "mask", buffer_factor, do_topography=do_topography_mapping, restrain_topography_points=use_full_resolution, row_range=[0, idx])
+                            
+                            figure.update_layout(
+                                paper_bgcolor="black",  # Black background outside the plot
+                                plot_bgcolor="black",  # Black background inside the plot
+                                font=dict(color="white")  # White text for visibility
+                            )
+                                                
+                            buf = io.BytesIO()
+                            figure.write_image(buf, format='png')
+                            buf.seek(0)  # Reset buffer to start
+                            frames.append(iio.imread(buf))
+                            buf.close()
 
-                        pct_completion = (i + 1) / total_frames
+                            time_elapsed += time.time() - time_start
+                    my_bar.empty()
 
-                        time_estimate = ""
-                        if pct_completion > 0 and time_elapsed > 0:
-                            est_seconds = int(time_elapsed * (1 - pct_completion) / pct_completion)
-                            minutes = est_seconds // 60
-                            seconds = est_seconds % 60
-                            time_estimate = f"(Estimate: {str(minutes).zfill(2)}:{str(seconds).zfill(2)}s)"
-                        
-                        my_bar.progress(pct_completion, text=f"{progress_text} {100 * pct_completion:.1f}% {time_estimate}")
-                        
-                        # Get the Figure object
-                        figure = dp.get_3_axis_plot(data_result, "mask", buffer_factor, do_topography=do_topography_mapping, row_range=[0, idx])
-                        
-                        figure.update_layout(
-                            paper_bgcolor="black",  # Black background outside the plot
-                            plot_bgcolor="black",  # Black background inside the plot
-                            font=dict(color="white")  # White text for visibility
-                        )
-                                            
-                        buf = io.BytesIO()
-                        figure.write_image(buf, format='png')
-                        buf.seek(0)  # Reset buffer to start
-                        frames.append(iio.imread(buf))
-                        buf.close()
+                    gif_buffer = io.BytesIO()
+                    loop_value = 0 if repeat_gif else 1  # 0 for infinite loop, 1 for no loop
+                    iio.imwrite(gif_buffer, frames, format='GIF', fps=fps, loop=loop_value)
+                    gif_buffer.seek(0)  # Reset buffer to start
+                    st.image(gif_buffer)
 
-                        time_elapsed += time.time() - time_start
-                my_bar.empty()
-
-                gif_buffer = io.BytesIO()
-                loop_value = 0 if repeat_gif else 1  # 0 for infinite loop, 1 for no loop
-                iio.imwrite(gif_buffer, frames, format='GIF', fps=fps, loop=loop_value)
-                gif_buffer.seek(0)  # Reset buffer to start
-                st.image(gif_buffer)
+                    st.download_button(
+                        label="Download Gif",
+                        data=gif_buffer,
+                        file_name=f"{mask}_{timeline_start[0]}_{timeline_start[1]}.gif",
+                        mime="gif",
+                    )
 
     else:  # No lightning data
         st.warning("Data too restrained. Modify parameters on left sidebar.")
