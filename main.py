@@ -332,11 +332,11 @@ def main():
 
             with st.expander("Generate Gif", expanded=False):
                 max_length = st.number_input("Maximum gif length (s)", 0.5, 10.0, 5.0)
-                fps = st.number_input("Frames Per Second (fps)", 10, 60, 10)
-                
+                fps = st.number_input("Frames Per Second (fps)", 1, 60, value=10)
+
                 repeat_gif = st.checkbox("Repeat Gif", value=True)
                 if do_topography_mapping:
-                    use_full_resolution = not st.checkbox("Use Full Resolution Topography", value=False)
+                    use_full_resolution = not st.checkbox("Use Full Resolution Topography (Expensive)", value=False)
                 else:
                     use_full_resolution = False
                 
