@@ -124,12 +124,12 @@ def main():
         st.divider()
 
         start_date = st.date_input("Start Date", now - relativedelta(months=1))
-        start_t = st.time_input("Start Time", value=datetime.min.time())  # default to 00:00
+        start_t = st.time_input("Start Time (UTC)", value=datetime.min.time())  # default to 00:00
 
         st.divider()
 
         end_date = st.date_input("End Date", now)
-        end_t = st.time_input("End Time", value=datetime.min.time())      # default to 00:00
+        end_t = st.time_input("End Time (UTC)", value=datetime.min.time())      # default to 00:00
 
         # Combine date and time
         start_datetime = datetime(
@@ -175,11 +175,6 @@ def main():
         )
         min_points_for_lightning = mask_count_min
 
-    with st.sidebar.expander(label="Timeline Parameters", expanded=True):
-        max_calendar_items: int = st.number_input(
-            "Maximum Lightning Strikes To Display", 1, 10000, value=1000
-        )
-
     with st.sidebar.expander("Topography Parameters", expanded=True):
         do_topography_mapping: int = st.checkbox(label="Enable Topography", value=False)
         buffer_factor = st.number_input("Topography Overlap Size (lat/lon)", 0.0, 2.0, 0.1)
@@ -208,9 +203,14 @@ def main():
     strike_times: List[Tuple[str, str]] = []
 
     # Cache files for processing the month
-    for file in approved_files:
-        if len(approved_files) > 0 and file not in approved_files:
+    len_approved_files = len(approved_files)
+    file_progress_bar = st.progress(0, text=f"Adressing Relevant Files:")
+    for i, file in enumerate(approved_files):
+        if len_approved_files > 0 and file not in approved_files: # Basically if there IS a selection for files
             continue
+            
+        if len_approved_files > 0:
+            file_progress_bar.progress(value=(i+1)/len_approved_files, text=f"Adressing Relevant Files: {(100*(i+1)/len_approved_files):.1f}%")
 
         with st.spinner(f"Retreiving data for `{file}`"):
             data_result: pd.DataFrame = dp.get_dataframe(
@@ -235,65 +235,130 @@ def main():
                 if len(substrike_times) > 0:
                     lightning_strikes += sub_strikes  # Concatenate to lightning_strikes
                     strike_times += substrike_times
+    file_progress_bar.empty()
 
     if len(lightning_strikes) > 0:
 
-        with st.spinner(f"Establishing timeline"):
-            items = []
-            for i in range(len(lightning_strikes)):
-                if len(lightning_strikes[i]) < min_points_for_lightning:
-                    continue
-                timeline_start = strike_times[i][0].split("T")
-                data_dict = {
-                    "id": i,
-                    "content": f"{lightning_strikes[i]['mask'][0]} {timeline_start[1]}",
-                    "start": strike_times[i][0],
-                }
-                if i > max_calendar_items - 1:
-                    st.warning(f"Only displaying maximum of {max_calendar_items} items")
-                    break
-                items.append(data_dict)
-
-        options = {"cluster": False, "snap": False, "stack": False}
-        if start_date and end_date:
-            options["min"] = start_date.strftime('%Y-%m-%d')
-            options["max"] = end_date.strftime('%Y-%m-%d')
-
         with st.expander("Select Lightning Event", expanded=True):
+            
+            timeline_tab, selection_tab = st.tabs(tabs=["Select From Timeline", "Select Individually"])
+            
+            with timeline_tab:
+                max_calendar_items: int = st.number_input(
+                    "Maximum Lightning Strikes To Display", 1, 10000, value=1500
+                )
 
-            timeline = st_timeline(items, groups=[], options=options, height="150px")
+                with st.spinner(f"Establishing timeline"):
+                    items = []
+                    for i in range(len(lightning_strikes)):
+                        if len(lightning_strikes[i]) < min_points_for_lightning:
+                            continue
+                        # Convert strike_times[i][0] to a datetime, then make ISO 8601 string with "Z"
+                        dt_utc = datetime.strptime(strike_times[i][0], "%Y-%m-%dT%H:%M:%S")
+                        dt_utc = dt_utc.replace(tzinfo=pytz.UTC)
+                        iso_utc_str = dt_utc.isoformat().replace("+00:00", "Z")
 
-            if timeline:
-                fine_tune_seconds: int = st.slider("Fine-tune seconds", 1, 100, 5)
+                        data_dict = {
+                            "id": i,
+                            "content": f"{lightning_strikes[i]['mask'][0]} {dt_utc.strftime('%H:%M:%S')} ({len(lightning_strikes[i])} pts)",
+                            "start": iso_utc_str,  # Full date+time in UTC
+                        }
+                        if i > max_calendar_items - 1:
+                            st.warning(f"Only displaying maximum of {max_calendar_items} items")
+                            break
+                        items.append(data_dict)
 
-                strike_found = True
-                unix_time = datetime.strptime(timeline["start"], "%Y-%m-%dT%H:%M:%S").timestamp()
-                index: int = timeline["id"]
+                options = {"cluster": False, "snap": False, "stack": False}
+                if start_date and end_date:
+                    options["min"] = start_datetime.isoformat().replace("+00:00", "Z")
+                    options["max"] = end_datetime.isoformat().replace("+00:00", "Z")
 
-                index_lookup = {timeline["content"]: index}
-                for i in range(len(strike_times)):
-                    if i == index:
+                timeline = st_timeline(items, groups=[], options=options, height="150px")
+
+                if timeline:
+                    fine_tune_seconds: int = st.slider("Fine-tune seconds", 1, 100, 5)
+
+                    strike_found = True
+                    unix_time = datetime.strptime(timeline["start"], "%Y-%m-%dT%H:%M:%SZ").timestamp()
+                    index: int = timeline["id"]
+
+                    index_lookup = {timeline["content"]: index}
+                    for i in range(len(strike_times)):
+                        if i == index:
+                            continue
+
+                        strike_time = datetime.strptime(
+                            strike_times[i][0], "%Y-%m-%dT%H:%M:%S"
+                        ).timestamp()
+                        if np.abs(unix_time - strike_time) < fine_tune_seconds:
+
+                            timeline_start = strike_times[i][0].split("T")
+                            name = f"{lightning_strikes[i]['mask'][0]} {timeline_start[1]} ({len(lightning_strikes[i])} pts)"
+                            index_lookup[name] = i
+
+                    strike_name: str = st.selectbox(
+                        f"Fine-tune selection within `{fine_tune_seconds}` seconds",
+                        list(index_lookup.keys()),
+                    )
+                    index: int = index_lookup[strike_name]
+                    timeline_start = strike_times[index][0].split("T")
+                    data_result: pd.DataFrame = lightning_strikes[index]
+                    mask = data_result["mask"][0]
+                else:
+                    strike_found = False
+
+            with selection_tab:
+                sort_options = ["Points", "Date", "Mask"]
+                sort_method = st.selectbox("Sort events by:", sort_options)
+
+                # Build a list of events, each containing all info needed
+                events = []
+                for i in range(len(lightning_strikes)):
+                    if len(lightning_strikes[i]) < min_points_for_lightning:
                         continue
 
-                    strike_time = datetime.strptime(
-                        strike_times[i][0], "%Y-%m-%dT%H:%M:%S"
-                    ).timestamp()
-                    if np.abs(unix_time - strike_time) < fine_tune_seconds:
+                    event_mask = lightning_strikes[i]["mask"].iloc[0]
+                    event_time_str = strike_times[i][0]  # e.g. "2024-09-11T15:50:00"
+                    dt = datetime.strptime(event_time_str, "%Y-%m-%dT%H:%M:%S")
+                    pts_count = len(lightning_strikes[i])
 
-                        timeline_start = strike_times[i][0].split("T")
-                        name = f"{lightning_strikes[i]['mask'][0]} {timeline_start[1]}"
-                        index_lookup[name] = i
+                    events.append({
+                        "index": i,
+                        "mask": event_mask,
+                        "datetime": dt,
+                        "pts": pts_count,
+                    })
 
-                strike_name: str = st.selectbox(
-                    f"Fine-tune selection within `{fine_tune_seconds}` seconds",
-                    list(index_lookup.keys()),
-                )
-                index: int = index_lookup[strike_name]
-                timeline_start = strike_times[index][0].split("T")
-                data_result: pd.DataFrame = lightning_strikes[index]
-                mask = data_result["mask"][0]
-            else:
-                strike_found = False
+                # Sort events based on user’s choice
+                if sort_method == "Date":
+                    # Sort by date ascending, then pts ascending
+                    events.sort(key=lambda x: (x["datetime"], x["pts"]))
+                elif sort_method == "Mask":
+                    # Sort by mask ascending, then date ascending
+                    events.sort(key=lambda x: (x["mask"], x["datetime"]))
+                else:
+                    # Default: sort by points ascending
+                    events.sort(key=lambda x: x["pts"])
+
+                # Build the dictionary for selectbox
+                event_selection_map = {}
+                for ev in events:
+                    user_friendly_time = ev["datetime"].strftime("%Y-%m-%d %H:%M:%S")
+                    label = f"{ev['mask']} [{user_friendly_time}] ({ev['pts']} pts)"
+                    event_selection_map[label] = ev["index"]
+
+                if event_selection_map:
+                    chosen_label = st.selectbox("Choose an event", list(event_selection_map.keys()))
+                    chosen_index = event_selection_map[chosen_label]
+
+                    data_result = lightning_strikes[chosen_index]
+                    timeline_start = strike_times[chosen_index][0].split("T")
+                    mask = data_result["mask"].iloc[0]
+                    strike_found = True
+                else:
+                    st.warning("No lightning events found for selection.")
+                    strike_found = False
+
 
         if strike_found:
             st.header(
@@ -349,10 +414,7 @@ def main():
             with st.spinner("Plitting 2D Figure"):
                 st.plotly_chart(lonalt_fig)
 
-            #if st.button("Generate gif"):
-            #    for i in range(len(data_result)):
-
-            with st.expander("Generate Gif", expanded=False):
+            with st.expander("Generate `.gif` Image", expanded=False):
                 max_length = st.number_input("Maximum gif length (s)", 0.5, 10.0, 5.0)
                 fps = st.number_input("Frames Per Second (fps)", 1, 60, value=10)
 
