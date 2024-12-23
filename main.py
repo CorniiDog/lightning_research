@@ -9,8 +9,7 @@ from dateutil.relativedelta import relativedelta
 from streamlit_timeline import st_timeline
 import imageio.v3 as iio
 import time
-
-  # For explicit types to rigid-ify the coding process
+import pytz
 
 st.set_page_config(
     page_title=None, page_icon=None, layout="wide", initial_sidebar_state="auto", menu_items=None
@@ -122,10 +121,33 @@ def main():
 
         now: datetime = datetime.now()
 
+        st.divider()
+
         start_date = st.date_input("Start Date", now - relativedelta(months=1))
-        start_datetime = datetime(start_date.year, start_date.month, start_date.day)
+        start_t = st.time_input("Start Time", value=datetime.min.time())  # default to 00:00
+
+        st.divider()
+
         end_date = st.date_input("End Date", now)
-        end_datetime = datetime(end_date.year, end_date.month, end_date.day)
+        end_t = st.time_input("End Time", value=datetime.min.time())      # default to 00:00
+
+        # Combine date and time
+        start_datetime = datetime(
+            start_date.year, 
+            start_date.month, 
+            start_date.day, 
+            start_t.hour, 
+            start_t.minute, 
+            tzinfo=pytz.UTC
+        )
+        end_datetime = datetime(
+            end_date.year, 
+            end_date.month, 
+            end_date.day, 
+            end_t.hour, 
+            end_t.minute, 
+            tzinfo=pytz.UTC
+        )
 
         approved_files = selected_files
         if len(selected_files) == 0:
