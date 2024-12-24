@@ -488,14 +488,18 @@ def get_opentopography_data(south, north, west, east, tif_file, demtype_index=0)
         if os.path.exists(tif_file):
             # Load the file as an xarray DataArray using rioxarray
             data_array = rioxarray.open_rasterio(filename=tif_file)
-        
-            return data_array
 
-    else: # No data for the designated chunk or error
-        with st.spinner(text=f"No topography data found for region or issue with `{dem}: {demtypes[dem]}`, trying different data"):
-            time.sleep(2)
-            topography_data = get_opentopography_data(south=south, north=north, west=west, east=east, tif_file=tif_file, demtype_index=demtype_index+1)
-        return topography_data
+            if not data_array.rio.nodata:
+                data_array = data_array.where(data_array > -40000)
+
+                if not data_array.rio.nodata and len(data_array) > 0:
+                    return data_array
+
+    # If response is not good
+    with st.spinner(text=f"No topography data found for region or issue with `{dem}: {demtypes[dem]}`, trying different data"):
+        time.sleep(2)
+        topography_data = get_opentopography_data(south=south, north=north, west=west, east=east, tif_file=tif_file, demtype_index=demtype_index+1)
+    return topography_data
 
 @st.cache_data
 def cache_topography_data(tif_file, params, tries = 0) -> xarray.DataArray | None:

@@ -204,13 +204,13 @@ def main():
 
     # Cache files for processing the month
     len_approved_files = len(approved_files)
-    file_progress_bar = st.progress(0, text=f"Adressing Relevant Files:")
+    file_progress_bar = st.progress(0, text=f"Reading Database:")
     for i, file in enumerate(approved_files):
         if len_approved_files > 0 and file not in approved_files: # Basically if there IS a selection for files
             continue
             
         if len_approved_files > 0:
-            file_progress_bar.progress(value=(i+1)/len_approved_files, text=f"Adressing Relevant Files: {(100*(i+1)/len_approved_files):.1f}%")
+            file_progress_bar.progress(value=(i+1)/len_approved_files, text=f"Reading Database: {(100*(i+1)/len_approved_files):.1f}%")
 
         with st.spinner(f"Retreiving data for `{file}`"):
             data_result: pd.DataFrame = dp.get_dataframe(
@@ -245,7 +245,7 @@ def main():
             
             with timeline_tab:
                 max_calendar_items: int = st.number_input(
-                    "Maximum Lightning Strikes To Display", 1, 10000, value=1500
+                    "Maximum Lightning Strikes To Display", 1, 10000, value=1000
                 )
 
                 with st.spinner(f"Establishing timeline"):
