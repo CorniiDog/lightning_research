@@ -861,8 +861,27 @@ def get_3_axis_plot(df:pd.DataFrame, identifier:str, buffer_factor:float, do_top
     fig_combined.update_xaxes(title_text="Altitude (m)", row=2, col=3)
     fig_combined.update_yaxes(title_text="Latitude", row=2, col=3)
 
-    # Update the layout
-    fig_combined.update_layout(height=800, width=800, title_text="Combined Plot of Lightning Strikes")
+    # Get earliest and latest date/time from the DataFrame
+    if "unix" in df.columns and not df["unix"].empty:
+        start_unix = df["unix"].min()
+        end_unix = df["unix"].max()
+
+        start_time = datetime.utcfromtimestamp(start_unix)
+        end_time = datetime.utcfromtimestamp(end_unix)
+
+        date_str = start_time.strftime("%m/%d/%Y")
+        start_str = start_time.strftime("%H:%M:%S.%f")[:-3]
+        end_str = end_time.strftime("%H:%M:%S.%f")[:-3]
+
+        title_text = f"Strike on <b>{date_str}</b> from <b>{start_str}</b> to <b>{end_str}</b> UTC"
+    else:
+        title_text = "Strike (no unix time found)"
+
+    fig_combined.update_layout(
+        height=800,
+        width=800,
+        title_text=title_text
+    )
 
     return fig_combined
 
