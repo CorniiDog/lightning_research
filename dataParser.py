@@ -56,15 +56,15 @@ def get_start_date_label(lightning_data_folder: str, file_name: str, start_time_
     return ""
 
 
-
 ######################################################################################################
 ## Helper functions below with processing and retreiving a nice-looking DataFrame
 ######################################################################################################
-def parse_file(f, data_body_start = "*** data ***", start_time_indicator = "Data start time:", start_time_format = "%m/%d/%y %H:%M:%S", data_header_startswith = "Data:") -> pd.DataFrame:
+def parse_file(f, station_data_indicator="Station data:", data_body_start = "*** data ***", start_time_indicator = "Data start time:", start_time_format = "%m/%d/%y %H:%M:%S", data_header_startswith = "Data:") -> pd.DataFrame:
     """
     This processes the entire file and extracts a pandas DataFrame
 
     :param f: The file object to read from
+    :param station_data_indicator: If a .dat file contains the station data indicator (str) then it will parse how many stations are active
     :param data_body_start: The indicator for the start of the data body (that is when the information begins)
     :param start_time_format: The formatting of the time upon reading the file, proceeding the text of `start_time_indicator`
     :return pd.DataFrame: A pandas dataframe resembling the data
@@ -73,6 +73,10 @@ def parse_file(f, data_body_start = "*** data ***", start_time_indicator = "Data
     data_headers: list[str] = None
     data_result: pd.DataFrame = None
     date_start: datetime = None
+
+
+    stations_active = None
+    finding_stations = False
 
     for line in f:  # Iterate through each line in the file
         line: str  # Hint that line is a string
@@ -86,22 +90,38 @@ def parse_file(f, data_body_start = "*** data ***", start_time_indicator = "Data
                 date_start = date_time_obj.replace(hour=0, minute=0, second=0, tzinfo=timezone.utc)
 
         # Extract data headers if not found
+        line_stripped = line.strip()
+        
+        if finding_stations:
+            generic_activity_found = False
+            line_split = line_stripped.split()
+            if len(line_split) > 0:
+                if line_split[-1].strip() == "A" or line_split[-1].strip() == "NA":
+                    if line_split[-1].strip() == "A":
+                        stations_active += 1
+                    generic_activity_found = True
+            if not generic_activity_found:
+                finding_stations = False
+        elif line_stripped.startswith(station_data_indicator):
+            finding_stations = True
+            stations_active = 0
+
         if not data_headers:
             if line.startswith(data_header_startswith):
                 data_headers = return_data_headers_if_found(
                     line=line, data_header_startswith=data_header_startswith
                 )
-
+        
         # If headers are found, then we go through
         elif data_result == None:
-            if line.strip() == data_body_start:
+            line_stripped = line.strip()
+            if line_stripped == data_body_start:
                 data_result = parse_data(f=f, data_headers=data_headers, date_start=date_start)
 
-        # Assume fully indented the data and break the for loop
         else:
             break
 
-    return data_result
+    return data_result, stations_active
 
 
 seconds_since_start_of_day_header = "time (UT sec of day)"
@@ -325,19 +345,20 @@ def get_dataframe_unfiltered(lightning_data_folder: str, file_name: str, data_bo
 
   start_datetime = start_datetime.replace(tzinfo=timezone.utc)
   end_datetime = end_datetime.replace(tzinfo=timezone.utc)
+  stations_active = None
 
   if os.path.exists(potential_cache_full):
       with open(potential_cache_full, "rb") as f:
           # Load start_datetime, end_datetime, and data from the pickle file
-          start_cached, end_cached, data = pkl.load(f)
+          start_cached, end_cached, data, stations_active = pkl.load(f)
 
           end_unix = end_datetime.timestamp()
           start_unix = start_datetime.timestamp()
           if not(start_unix <= start_cached <= end_unix or start_unix <= end_cached <= end_unix):
-              return None
+              return None, None
   else:
       with open(os.path.join(lightning_data_folder, file_name), "r") as f:
-          data = parse_file(f=f, data_body_start=data_body_start, start_time_indicator=start_time_indicator, start_time_format=start_time_format, data_header_startswith=data_header_startswith)
+          data, stations_active = parse_file(f=f, data_body_start=data_body_start, start_time_indicator=start_time_indicator, start_time_format=start_time_format, data_header_startswith=data_header_startswith)
 
           # Check if data is not empty
           if data is not None and not data.empty:
@@ -349,8 +370,8 @@ def get_dataframe_unfiltered(lightning_data_folder: str, file_name: str, data_bo
 
           with open(potential_cache_full, "wb") as f:
               # Dump [start_cached, end_cached, data] into the pickle file
-              pkl.dump([start_cached, end_cached, data], f)
-  return data
+              pkl.dump([start_cached, end_cached, data, stations_active], f)
+  return data, stations_active
   
 def get_dataframe(lightning_data_folder: str, file_name: str, count_required: Tuple[str, Callable], filters: Tuple[str, Callable], data_body_start="*** data ***", start_time_indicator="Data start time:", start_time_format="%m/%d/%y %H:%M:%S", data_header_startswith="Data:", start_datetime: datetime = None, end_datetime: datetime = None) -> pd.DataFrame | None:
     """
@@ -359,11 +380,11 @@ def get_dataframe(lightning_data_folder: str, file_name: str, count_required: Tu
     """
     os.makedirs(lightning_data_folder, exist_ok=True)  # Ensure cache directory exists
 
-    data = get_dataframe_unfiltered(lightning_data_folder=lightning_data_folder, file_name=file_name, data_body_start=data_body_start, start_time_indicator=start_time_indicator, start_time_format=start_time_format, data_header_startswith=data_header_startswith, start_datetime=start_datetime, end_datetime=end_datetime)
+    data, stations_active = get_dataframe_unfiltered(lightning_data_folder=lightning_data_folder, file_name=file_name, data_body_start=data_body_start, start_time_indicator=start_time_indicator, start_time_format=start_time_format, data_header_startswith=data_header_startswith, start_datetime=start_datetime, end_datetime=end_datetime)
 
     # Return None if data is empty
     if data is None:
-        return None
+        return None, None
 
     with st.spinner(f"Applying filters for `{file_name}`"):
         # Apply additional filters
@@ -382,7 +403,7 @@ def get_dataframe(lightning_data_folder: str, file_name: str, count_required: Tu
         # Ensure 'unix' column is in datetime format
         data = data[(data['unix'] >= start_datetime.timestamp()) & (data['unix'] <= end_datetime.timestamp())]
 
-    return data
+    return data, stations_active
 
 @st.cache_data
 def generate_colors(num_colors):
@@ -1034,7 +1055,7 @@ Default: `299792458.0`
 """
 
 @st.cache_data
-def get_strikes(df: pd.DataFrame, lightning_max_strike_time: float = 0.15, lightning_max_strike_distance: float = 3000.0, lightning_minimum_speed: float = 299792.458, min_points_for_lightning = 2) -> Tuple[List[pd.DataFrame], List[Tuple[str, str]]]:
+def get_strikes(df: pd.DataFrame, stations_active= -1, lightning_max_strike_time: float = 0.15, lightning_max_strike_distance: float = 3000.0, lightning_minimum_speed: float = 299792.458, min_points_for_lightning = 2) -> Tuple[List[pd.DataFrame], List[Tuple[str, str]]]:
     """
     Gets the list of strikes.
 
@@ -1137,5 +1158,11 @@ def get_strikes(df: pd.DataFrame, lightning_max_strike_time: float = 0.15, light
               min_time_str = datetime.fromtimestamp(min_time_unix, tz=timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
               max_time_str = datetime.fromtimestamp(max_time_unix, tz=timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
               filtered_strike_times.append((min_time_str, max_time_str))
+
+    if not stations_active:
+        stations_active = -1
+
+    for i in range(len(filtered_strikes)):
+        filtered_strikes[i]['# stations'] = str(stations_active)
 
     return filtered_strikes, filtered_strike_times

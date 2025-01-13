@@ -159,6 +159,7 @@ def main():
         km_min: int = st.number_input("Altitude min (km)", 0, 100, 0)
         km_max: int = st.number_input("Altitude max (km)", 0, 200, 200)
         mask_count_min: int = st.slider("Mask minimum occurances", 2, 10, 4)
+        min_stations: int = st.number_input("Minimum Number of Stations", min_value=0, max_value=20, value=0)
 
     with st.sidebar.expander("Lightning Parameters", expanded=True):
         lightning_max_strike_time = st.number_input(
@@ -213,7 +214,7 @@ def main():
             file_progress_bar.progress(value=(i+1)/len_approved_files, text=f"Reading Database: {(100*(i+1)/len_approved_files):.1f}%")
 
         with st.spinner(f"Retreiving data for `{file}`"):
-            data_result: pd.DataFrame = dp.get_dataframe(
+            data_result, stations_active = dp.get_dataframe(
                 lightning_data_folder=lightning_data_folder,
                 file_name=file,
                 count_required=count_required,
@@ -222,10 +223,11 @@ def main():
                 end_datetime=end_datetime,
             )
 
-        if data_result is not None and len(data_result) > 0:
+        if data_result is not None and len(data_result) > 0 and (min_stations <= 0 or (stations_active and stations_active >= min_stations)):
             with st.spinner(f"Parsing lightning data for `{file}`"):
                 sub_strikes, substrike_times = dp.get_strikes(
                     df=data_result,
+                    stations_active=stations_active,
                     lightning_max_strike_time=lightning_max_strike_time,
                     lightning_max_strike_distance=lightning_max_strike_distance,
                     lightning_minimum_speed=lightning_minimum_speed,
@@ -494,6 +496,13 @@ def main():
 
     if st.button("Clear Cache"):
         st.write("Cache cleared")
+        
+        # Clear pkl cache folder
+        lightning_data_cache_folder = "lightning_data_cache"
+        for filename in os.listdir(lightning_data_cache_folder):
+            file_path = os.path.join(lightning_data_cache_folder, filename)
+            os.remove(file_path)
+
         st.cache_data.clear()
         st.rerun()
 
