@@ -1166,3 +1166,6 @@ def get_strikes(df: pd.DataFrame, stations_active= -1, lightning_max_strike_time
         filtered_strikes[i]['# stations'] = str(stations_active)
 
     return filtered_strikes, filtered_strike_times
+
+# TODO: Bulk download Gif Images
+#def generate_gif_image(max_length: float = 5.0)

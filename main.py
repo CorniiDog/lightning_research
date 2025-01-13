@@ -10,6 +10,7 @@ from streamlit_timeline import st_timeline
 import imageio.v3 as iio
 import time
 import pytz
+import zipfile
 
 st.set_page_config(
     page_title=None, page_icon=None, layout="wide", initial_sidebar_state="auto", menu_items=None
@@ -243,7 +244,7 @@ def main():
 
         with st.expander("Select Lightning Event", expanded=True):
             
-            timeline_tab, selection_tab = st.tabs(tabs=["Select From Timeline", "Select Individually"])
+            timeline_tab, selection_tab, bulk_download_tab = st.tabs(tabs=["Select From Timeline", "Select Individually", "Bulk Download"])
             
             with timeline_tab:
                 max_calendar_items: int = st.number_input(
@@ -360,6 +361,34 @@ def main():
                 else:
                     st.warning("No lightning events found for selection.")
                     strike_found = False
+
+            with bulk_download_tab:
+
+                min_num_pts = st.number_input("Filter Minimum Number of Points", 0, 1000, 0)
+
+                zip_buffer = io.BytesIO()
+                with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                    for i in range(len(lightning_strikes)):
+                        data_result = lightning_strikes[i]
+                        if len(data_result) < min_num_pts:
+                            continue
+                        mask = data_result["mask"].iloc[0]
+                        timeline_start = strike_times[i][0].split("T")                        
+
+                        ts1 = timeline_start[1].replace(":", "-")
+                        filename = f"{mask}_{timeline_start[0]}_{ts1}.csv"
+
+                        csv_buffer = io.StringIO()
+                        data_result.to_csv(csv_buffer, index=False)
+                        zip_file.writestr(filename, csv_buffer.getvalue())
+                zip_data = zip_buffer.getvalue()
+
+                st.download_button(
+                    label="Bulk Download CSV",
+                    data=zip_data,
+                    file_name=f"{mask}_{timeline_start[0]}_{timeline_start[1]}.zip",
+                    mime="zip",
+                )
 
 
         if strike_found:
