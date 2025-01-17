@@ -13,6 +13,8 @@ import rioxarray
 import time
 import streamlit as st
 import pickle as pkl
+import io
+import imageio.v3 as iio
 
 from typing import (
     Dict,
@@ -317,18 +319,17 @@ def polish_data_cache(lightning_data_folder: str):
     os.makedirs(lightning_data_cache_folder, exist_ok=True)  # Ensure cache directory exists
 
 
-    with st.spinner("Polishing cache and updating data"):
-        for cache_file in os.listdir(lightning_data_cache_folder):
-            cache_filename_without_extension = cache_file.replace(".pkl", "")
+    for cache_file in os.listdir(lightning_data_cache_folder):
+        cache_filename_without_extension = cache_file.replace(".pkl", "")
 
-            found = False
-            for dat_file in os.listdir(lightning_data_folder):
-                if cache_filename_without_extension in dat_file:
-                    found = True
-                    break
+        found = False
+        for dat_file in os.listdir(lightning_data_folder):
+            if cache_filename_without_extension in dat_file:
+                found = True
+                break
 
-            if not found:
-                os.remove(os.path.join(lightning_data_cache_folder, cache_file))
+        if not found:
+            os.remove(os.path.join(lightning_data_cache_folder, cache_file))
 
         
             
@@ -1167,5 +1168,59 @@ def get_strikes(df: pd.DataFrame, stations_active= -1, lightning_max_strike_time
 
     return filtered_strikes, filtered_strike_times
 
-# TODO: Bulk download Gif Images
-#def generate_gif_image(max_length: float = 5.0)
+def generate_gif_image(data_result, buffer_factor:float = 0.1, max_length: float = 5.0, fps:int = 10, repeat_gif:bool = True, do_topography_mapping:bool = False, use_full_resolution:bool = False):
+    total_frames = int(max_length * fps)
+
+    with st.spinner("Generating gif"):
+
+        progress_text = "Generating Images:"
+        my_bar = st.progress(0, text=progress_text)
+
+        frames = []
+
+        len_data_result = len(data_result)
+        steps = np.linspace(0, 1, total_frames)  # Steps from 0 to 1
+        indices = (steps * (len_data_result - 1)).astype(int)  # Map steps to data_result indices
+
+        time_elapsed = 0
+        for i, idx in enumerate(indices):
+            if idx <= 1:
+                continue
+
+            time_start = time.time()
+
+            pct_completion = (i + 1) / total_frames
+
+            time_estimate = ""
+            if time_elapsed > 0 and pct_completion > 0.5:
+                est_seconds = int(time_elapsed * (1 - pct_completion) / pct_completion)
+                minutes = est_seconds // 60
+                seconds = est_seconds % 60
+                time_estimate = f"(Estimate: {str(minutes).zfill(2)}:{str(seconds).zfill(2)})"
+            
+            my_bar.progress(pct_completion, text=f"{progress_text} {100 * pct_completion:.1f}% {time_estimate}")
+            
+            # Get the Figure object
+            figure = get_3_axis_plot(data_result, "mask", buffer_factor, do_topography=do_topography_mapping, restrain_topography_points=use_full_resolution, row_range=[0, idx])
+            
+            figure.update_layout(
+                paper_bgcolor="black",  # Black background outside the plot
+                plot_bgcolor="black",  # Black background inside the plot
+                font=dict(color="white")  # White text for visibility
+            )
+                                
+            buf = io.BytesIO()
+            figure.write_image(buf, format='png')
+            buf.seek(0)  # Reset buffer to start
+            frames.append(iio.imread(buf))
+            buf.close()
+
+            time_elapsed += time.time() - time_start
+    my_bar.empty()
+
+    gif_buffer = io.BytesIO()
+    loop_value = 0 if repeat_gif else 1  # 0 for infinite loop, 1 for no loop
+    iio.imwrite(gif_buffer, frames, format='GIF', fps=fps, loop=loop_value)
+    gif_buffer.seek(0)  # Reset buffer to start
+
+    return gif_buffer

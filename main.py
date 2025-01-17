@@ -5,12 +5,14 @@ import dataParser as dp # dataParser.py
 import numpy as np
 import pandas as pd
 import streamlit as st
+import concurrent_runner as cr
 from dateutil.relativedelta import relativedelta
 from streamlit_timeline import st_timeline
 import imageio.v3 as iio
 import time
 import pytz
 import zipfile
+import multiprocessing
 
 st.set_page_config(
     page_title=None, page_icon=None, layout="wide", initial_sidebar_state="auto", menu_items=None
@@ -207,6 +209,10 @@ def main():
     # Cache files for processing the month
     len_approved_files = len(approved_files)
     file_progress_bar = st.progress(0, text=f"Reading Database:")
+
+
+    data_results_list = []
+    stations_active_list = []
     for i, file in enumerate(approved_files):
         if len_approved_files > 0 and file not in approved_files: # Basically if there IS a selection for files
             continue
@@ -225,20 +231,22 @@ def main():
             )
 
         if data_result is not None and len(data_result) > 0 and (min_stations <= 0 or (stations_active and stations_active >= min_stations)):
-            with st.spinner(f"Parsing lightning data for `{file}`"):
-                sub_strikes, substrike_times = dp.get_strikes(
-                    df=data_result,
-                    stations_active=stations_active,
-                    lightning_max_strike_time=lightning_max_strike_time,
-                    lightning_max_strike_distance=lightning_max_strike_distance,
-                    lightning_minimum_speed=lightning_minimum_speed,
-                    min_points_for_lightning=min_points_for_lightning,
-                )
+            data_results_list.append(data_result)
+            stations_active_list.append(stations_active)
 
-                if len(substrike_times) > 0:
-                    lightning_strikes += sub_strikes  # Concatenate to lightning_strikes
-                    strike_times += substrike_times
     file_progress_bar.empty()
+    
+    functions_to_run = []
+    for i, data_result in enumerate(data_results_list):
+        stations_active = stations_active_list[i]
+        functions_to_run.append((dp.get_strikes, (data_result, stations_active, lightning_max_strike_time, lightning_max_strike_distance, lightning_minimum_speed, min_points_for_lightning)))
+
+    with st.spinner("Identifying Lightning Strikes"):
+        results = cr.run_concurrently(functions_to_run)
+
+    for sub_strikes, substrike_times in results:
+        lightning_strikes += sub_strikes
+        strike_times += substrike_times
 
     if len(lightning_strikes) > 0:
 
@@ -366,29 +374,45 @@ def main():
 
                 min_num_pts = st.number_input("Filter Minimum Number of Points", 0, 1000, 0)
 
-                zip_buffer = io.BytesIO()
-                with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                    for i in range(len(lightning_strikes)):
-                        data_result = lightning_strikes[i]
-                        if len(data_result) < min_num_pts:
-                            continue
-                        mask = data_result["mask"].iloc[0]
-                        timeline_start = strike_times[i][0].split("T")                        
+                if st.button("Generate `csv` Files In Bulk"):
+                    zip_buffer = io.BytesIO()
+                    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                        for i in range(len(lightning_strikes)):
+                            data_result = lightning_strikes[i]
+                            if len(data_result) < min_num_pts:
+                                continue
+                            mask = data_result["mask"].iloc[0]
+                            timeline_start = strike_times[i][0].split("T")                        
 
-                        ts1 = timeline_start[1].replace(":", "-")
-                        filename = f"{mask}_{timeline_start[0]}_{ts1}.csv"
+                            ts1 = timeline_start[1].replace(":", "-")
+                            filename = f"{mask}_{timeline_start[0]}_{ts1}.csv"
 
-                        csv_buffer = io.StringIO()
-                        data_result.to_csv(csv_buffer, index=False)
-                        zip_file.writestr(filename, csv_buffer.getvalue())
-                zip_data = zip_buffer.getvalue()
+                            csv_buffer = io.StringIO()
+                            data_result.to_csv(csv_buffer, index=False)
+                            zip_file.writestr(filename, csv_buffer.getvalue())
+                    zip_data = zip_buffer.getvalue()
 
-                st.download_button(
-                    label="Bulk Download CSV",
-                    data=zip_data,
-                    file_name=f"{mask}_{timeline_start[0]}_{timeline_start[1]}.zip",
-                    mime="zip",
-                )
+                    st.download_button(
+                        label="Download CSV Files",
+                        data=zip_data,
+                        file_name=f"{mask}_{timeline_start[0]}_{timeline_start[1]}.zip",
+                        mime="zip",
+                    )
+                    
+                # if st.button("Generate `gif` Images In Bulk"):
+                #     zip_buffer = io.BytesIO()
+                #     with zipfile.ZipFile(zip_buffer, "w") as zip_file:
+                #         gif_buffer = dp.generate_gif_image(data_result, buffer_factor=buffer_factor, max_length=5, fps=10, repeat_gif=True, do_topography_mapping=do_topography_mapping, use_full_resolution=False)
+                #         st.image(gif_buffer)
+
+                #     st.download_button(
+                #         label="Download Gif",
+                #         data=gif_buffer,
+                #         file_name=f"{mask}_{timeline_start[0]}_{timeline_start[1]}.gif",
+                #         mime="gif",
+                #     )
+
+                
 
 
         if strike_found:
@@ -455,60 +479,8 @@ def main():
                 else:
                     use_full_resolution = False
                 
-                total_frames = int(max_length * fps)
-
                 if st.button("Generate"):
-                    with st.spinner("Generating gif"):
-
-                        progress_text = "Generating Images:"
-                        my_bar = st.progress(0, text=progress_text)
-
-                        frames = []
-
-                        len_data_result = len(data_result)
-                        steps = np.linspace(0, 1, total_frames)  # Steps from 0 to 1
-                        indices = (steps * (len_data_result - 1)).astype(int)  # Map steps to data_result indices
-
-                        time_elapsed = 0
-                        for i, idx in enumerate(indices):
-                            if idx <= 1:
-                                continue
-
-                            time_start = time.time()
-
-                            pct_completion = (i + 1) / total_frames
-
-                            time_estimate = ""
-                            if time_elapsed > 0 and pct_completion > 0.5:
-                                est_seconds = int(time_elapsed * (1 - pct_completion) / pct_completion)
-                                minutes = est_seconds // 60
-                                seconds = est_seconds % 60
-                                time_estimate = f"(Estimate: {str(minutes).zfill(2)}:{str(seconds).zfill(2)})"
-                            
-                            my_bar.progress(pct_completion, text=f"{progress_text} {100 * pct_completion:.1f}% {time_estimate}")
-                            
-                            # Get the Figure object
-                            figure = dp.get_3_axis_plot(data_result, "mask", buffer_factor, do_topography=do_topography_mapping, restrain_topography_points=use_full_resolution, row_range=[0, idx])
-                            
-                            figure.update_layout(
-                                paper_bgcolor="black",  # Black background outside the plot
-                                plot_bgcolor="black",  # Black background inside the plot
-                                font=dict(color="white")  # White text for visibility
-                            )
-                                                
-                            buf = io.BytesIO()
-                            figure.write_image(buf, format='png')
-                            buf.seek(0)  # Reset buffer to start
-                            frames.append(iio.imread(buf))
-                            buf.close()
-
-                            time_elapsed += time.time() - time_start
-                    my_bar.empty()
-
-                    gif_buffer = io.BytesIO()
-                    loop_value = 0 if repeat_gif else 1  # 0 for infinite loop, 1 for no loop
-                    iio.imwrite(gif_buffer, frames, format='GIF', fps=fps, loop=loop_value)
-                    gif_buffer.seek(0)  # Reset buffer to start
+                    gif_buffer = dp.generate_gif_image(data_result, buffer_factor=buffer_factor, max_length=max_length, fps=fps, repeat_gif=repeat_gif, do_topography_mapping=do_topography_mapping, use_full_resolution=use_full_resolution)
                     st.image(gif_buffer)
 
                     st.download_button(
