@@ -234,19 +234,18 @@ def main():
             data_results_list.append(data_result)
             stations_active_list.append(stations_active)
 
-    file_progress_bar.empty()
     
-    functions_to_run = []
     for i, data_result in enumerate(data_results_list):
         stations_active = stations_active_list[i]
-        functions_to_run.append((dp.get_strikes, (data_result, stations_active, lightning_max_strike_time, lightning_max_strike_distance, lightning_minimum_speed, min_points_for_lightning)))
-
-    with st.spinner("Identifying Lightning Strikes"):
-        results = cr.run_concurrently(functions_to_run)
-
-    for sub_strikes, substrike_times in results:
+        sub_strikes, substrike_times = dp.get_strikes(df=data_result, stations_active=data_result, lightning_max_strike_time=lightning_max_strike_time, lightning_max_strike_distance=lightning_max_strike_distance, lightning_minimum_speed=lightning_minimum_speed, min_points_for_lightning=min_points_for_lightning)
         lightning_strikes += sub_strikes
         strike_times += substrike_times
+
+        file_progress_bar.progress(value=(i+1)/len_approved_files, text=f"Calculating Lightning Strikes: {(100*(i+1)/len_approved_files):.1f}%")
+
+
+    file_progress_bar.empty()
+
 
     if len(lightning_strikes) > 0:
 
