@@ -237,7 +237,7 @@ def main():
     
     for i, data_result in enumerate(data_results_list):
         stations_active = stations_active_list[i]
-        sub_strikes, substrike_times = dp.get_strikes(df=data_result, stations_active=data_result, lightning_max_strike_time=lightning_max_strike_time, lightning_max_strike_distance=lightning_max_strike_distance, lightning_minimum_speed=lightning_minimum_speed, min_points_for_lightning=min_points_for_lightning)
+        sub_strikes, substrike_times = dp.get_strikes(df=data_result, stations_active=stations_active, lightning_max_strike_time=lightning_max_strike_time, lightning_max_strike_distance=lightning_max_strike_distance, lightning_minimum_speed=lightning_minimum_speed, min_points_for_lightning=min_points_for_lightning)
         lightning_strikes += sub_strikes
         strike_times += substrike_times
 
